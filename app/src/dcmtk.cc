@@ -284,6 +284,7 @@ struct CallbackData_SCP {
 struct CallbackData_SCU {
   el::base::PerformanceTracker* timer_;
   std::string xfer_;
+  int dicom_port_;
   bool need_response_;
 };
 
@@ -790,7 +791,8 @@ void* storescp_thread(void* pass) {
   // T_ASC_Association* subop_association;
   T_ASC_Network* network;
   int timeout = INT_MAX;
-  CHK(ASC_initializeNetwork(NET_ACCEPTOR, 1111, timeout, &network));
+  CallbackData_SCU* cbd = (CallbackData_SCU*)pass;
+  CHK(ASC_initializeNetwork(NET_ACCEPTOR, cbd->dicom_port_, timeout, &network));
 
   LOG(INFO) << "Waiting for association...";
   CHK(ASC_associationWaiting(network, timeout));
@@ -799,7 +801,6 @@ void* storescp_thread(void* pass) {
   LOG(INFO) << "accept store association started";
   CHK(ASC_receiveAssociation(network, &assoc, ASC_DEFAULTMAXPDU));
 
-  CallbackData_SCU* cbd = (CallbackData_SCU*)pass;
   const char* transfer_syntaxes[] = {cbd->xfer_.c_str()};
 
   /*const char* transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
@@ -1045,6 +1046,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   CallbackData_SCU callback_data;
   callback_data.timer_ = &timerObj;
   callback_data.xfer_ = xfer;
+  callback_data.dicom_port_ = dicom_port_;
   callback_data.need_response_ = need_response_;
 
   DcmDataset*  rspIds = 0;
