@@ -751,7 +751,7 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
 }
 
 //------------------------------------------------------------------------------
-
+/*
 static void storescp_provider_callback(void* callback_data,
                                     T_ASC_Network* network,
                                     T_ASC_Association** subop_association) {
@@ -781,6 +781,7 @@ static void storescp_provider_callback(void* callback_data,
 
   VLOG(1) << "subop_provider_callback FINISHED";
 }
+*/
 
 //------------------------------------------------------------------------------
 
