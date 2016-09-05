@@ -45,7 +45,7 @@ link_directories(${tools_PREFIX}/lib)
 #link_directories(build)
 
 add_executable(sebes "src/sebes.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(sebes dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
+target_link_libraries(sebes dcmqrdb dcmjpls CharLS dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
 
 add_executable(huz "src/huz.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(huz dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
+target_link_libraries(huz dcmqrdb dcmjpls CharLS dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
