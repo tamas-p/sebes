@@ -1,0 +1,30 @@
+diff --git a/dcmnet/libsrc/dul.cc b/dcmnet/libsrc/dul.cc
+index feca04d..631a4c0 100644
+--- a/dcmnet/libsrc/dul.cc
++++ b/dcmnet/libsrc/dul.cc
+@@ -2284,8 +2284,8 @@ setTCPBufferLength(int sock)
+         }
+     }
+ #if defined(SO_SNDBUF) && defined(SO_RCVBUF)
+-    (void) setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *) &bufLen, sizeof(bufLen));
+-    (void) setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *) &bufLen, sizeof(bufLen));
++//    (void) setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *) &bufLen, sizeof(bufLen));
++//    (void) setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *) &bufLen, sizeof(bufLen));
+ #else
+     DCMNET_WARN("DULFSM: setTCPBufferLength: "
+         "cannot set TCP buffer length socket option: "
+diff --git a/dcmnet/libsrc/dulfsm.cc b/dcmnet/libsrc/dulfsm.cc
+index eadee9c..394cb9f 100644
+--- a/dcmnet/libsrc/dulfsm.cc
++++ b/dcmnet/libsrc/dulfsm.cc
+@@ -3755,8 +3755,8 @@ setTCPBufferLength(int sock)
+         }
+     }
+ #if defined(SO_SNDBUF) && defined(SO_RCVBUF)
+-    (void) setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *) &bufLen, sizeof(bufLen));
+-    (void) setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *) &bufLen, sizeof(bufLen));
++//    (void) setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *) &bufLen, sizeof(bufLen));
++//    (void) setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *) &bufLen, sizeof(bufLen));
+ #else
+      DCMNET_WARN("DULFSM: setTCPBufferLength: "
+             "cannot set TCP buffer length socket option: "
