@@ -820,7 +820,10 @@ void* storescp_thread(void* pass) {
     ASC_dropAssociation(assoc);
     ASC_destroyAssociation(&assoc);
   }
+  LOG(INFO) << "store association accepted. Starting receiving images...";
 
+  size_t num_images_received = 0;
+  size_t num_bytes_received = 0;
   while (true) {
     T_DIMSE_Message msg;
     T_ASC_PresentationContextID presID;
@@ -836,7 +839,7 @@ void* storescp_thread(void* pass) {
     if (cond_rc == EC_Normal && msg.CommandField == DIMSE_C_STORE_RQ) {
       T_DIMSE_Message* msg1 = &msg;
       T_DIMSE_C_StoreRQ* req = &msg1->msg.CStoreRQ;
-      
+
       char imageFileName[PATH_MAX+1];
       snprintf(imageFileName,
                PATH_MAX,
@@ -860,13 +863,15 @@ void* storescp_thread(void* pass) {
         0);*/
       {
         if (VLOG_IS_ON(1)) TIMED_SCOPE(t2, "receiveDataSetInMemory");
-        DIMSE_receiveDataSetInMemory(assoc,
-                                     DIMSE_BLOCKING,
-                                     0,
-                                     &presID,
-                                     &dset,
-                                     0,
-                                     0);
+        CHK(DIMSE_receiveDataSetInMemory(assoc,
+                                         DIMSE_BLOCKING,
+                                         0,
+                                         &presID,
+                                         &dset,
+                                         0,
+                                         0));
+        num_images_received++;
+        num_bytes_received += dset->getLength();
       }
 
       T_DIMSE_C_StoreRSP response;
@@ -921,7 +926,7 @@ void* storescp_thread(void* pass) {
                 << cond_release.text();
       ASC_dropSCPAssociation(assoc);
       ASC_destroyAssociation(&assoc);
-      break;    
+      break;
     } else {
       if (cond_rc == DUL_PEERABORTEDASSOCIATION) {
         LOG(INFO) << "DUL_PEERABORTEDASSOCIATION: Nothing?.";
@@ -939,7 +944,10 @@ void* storescp_thread(void* pass) {
       }
     }
   }
-  
+
+  LOG(INFO) << "Number of images received: " << num_images_received;
+  LOG(INFO) << "Number of bytes received: " << num_bytes_received;
+
   cleanup_f(assoc);
   pthread_exit(NULL);
 }
@@ -951,16 +959,15 @@ void start_storescp(pthread_t* thread,
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
   // storescp_thread(callback_data);
-  
+
   int rc = pthread_create(thread, &attr, storescp_thread, callback_data);
   if (rc != 0)
     LOG(ERROR) << "Could not create storescp thread.";
 
-  pthread_attr_destroy(&attr);  
+  pthread_attr_destroy(&attr);
 }
 
 //------------------------------------------------------------------------------                                 
-                                 
 void DicomDcmtk::movescu_execute(const std::string& raet,
                                  const std::string& raddress,
                                  Dicom::QueryLevel level,
@@ -1086,7 +1093,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
 
 //------------------------------------------------------------------------------
-
+/*
 #include <vtkSmartPointer.h>
 #include <vtkImageImport.h>
 #include <vtkBMPWriter.h>
@@ -1127,7 +1134,6 @@ void show_viewer(DcmDataset* dataset) {
   imageImport->SetImportVoidPointer((void*)pixelData);
   imageImport->Update();
 
-  /*
   vtkSmartPointer<vtkImageFlip> flipYFilter = vtkSmartPointer<vtkImageFlip>::New();
   flipYFilter->SetFilteredAxis(1);  // flip y axis
   flipYFilter->SetInputConnection(imageImport->GetOutputPort());
@@ -1137,7 +1143,6 @@ void show_viewer(DcmDataset* dataset) {
   resize->SetInputConnection(imageImport->GetOutputPort());
   resize->SetOutputDimensions(512, (512.0 / columns) * rows, 1);
   resize->Update();
-  */
   vtkSmartPointer<vtkImageViewer> imageViewer = vtkSmartPointer<vtkImageViewer>::New();
   imageViewer->SetInputConnection(imageImport->GetOutputPort());
 
@@ -1151,5 +1156,5 @@ void show_viewer(DcmDataset* dataset) {
 
   renderWindowInteractor->Start();
 }
-
+*/
 //------------------------------------------------------------------------------

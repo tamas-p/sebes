@@ -12,15 +12,6 @@ INITIALIZE_EASYLOGGINGPP
 
 //------------------------------------------------------------------------------
 
-void set_tcp_buffer_length(const std::string& length) {
-  const char* tcp_buff_len = "TCP_BUFFER_LENGTH";
-  if (setenv(tcp_buff_len, length.c_str(), 1) != 0) {
-    PLOG(ERROR) << "Could not set " << tcp_buff_len;
-  }
-}
-
-//------------------------------------------------------------------------------
-
 void print_usage_and_exit(const std::string& name) {
   std::cout << "Usage: "
             << name

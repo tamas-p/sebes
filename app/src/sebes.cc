@@ -18,6 +18,7 @@ void print_usage_and_exit(const std::string& name) {
             << " --host=aet@host:port"
             << " --rhosts=aet1@host1:port1,aet2@host2:port2,..."
             << " --imagedir=/path/to/dicom/images"
+            << " [--tcpbuffer=length]"
             << " [--norsp]"
             << " [--multi]" << std::endl;
   exit(-1);
@@ -34,6 +35,7 @@ struct Arguments {
 
   std::string imagedir_;
   bool multi_;
+  std::string tcp_buffer_length_;
   bool need_response_;
   Arguments() : multi_(false), need_response_(true) {}
 };
@@ -67,6 +69,7 @@ void cmdparse(int argc,
       {"host", required_argument, 0, 'h'},
       {"rhosts", required_argument, 0, 'r'},
       {"imagedir", required_argument, 0, 'd'},
+      {"tcpbuffer", required_argument, 0, 'b'},
       {"norsp", no_argument, 0, 'n'},
       {"multi", no_argument, 0, 'm'},
       {0, 0, 0, 0}
@@ -103,6 +106,10 @@ void cmdparse(int argc,
       arguments->multi_ = false;
       break;
 
+    case 'b':
+      arguments->tcp_buffer_length_ = optarg;
+      break;
+
     case 'n':
       arguments->need_response_ = false;
       break;
@@ -137,15 +144,18 @@ void cmdparse(int argc,
 //------------------------------------------------------------------------------
 
 int main(int argc, char *argv[]) {
+  /*
   el::Configurations conf("easylogging.conf");
   el::Loggers::reconfigureAllLoggers(conf);
-  /*el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format,
-    "%datetime %level %file:%line : %msg");*/
+  */
+  el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format,
+                                     "%datetime %level %file:%line : %msg");
 
   START_EASYLOGGINGPP(argc, argv);
 
   Arguments arguments;
   cmdparse(argc, argv, &arguments);
+  set_tcp_buffer_length(arguments.tcp_buffer_length_);
   LOG(INFO) << basename(argv[0]) << " has been started...";
 
   const ImageStore* imagestore = new ImageStore(arguments.imagedir_);

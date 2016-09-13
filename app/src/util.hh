@@ -23,6 +23,8 @@ bool parse_host(const std::string& str,
 bool parse_port(const std::string& str,
                 std::string* port);
 
+void set_tcp_buffer_length(const std::string& length);
+
 //------------------------------------------------------------------------------
 
 #endif  // APP_SRC_UTIL_H_

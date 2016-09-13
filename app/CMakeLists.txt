@@ -3,7 +3,7 @@ project (hello)
 
 # --------------------------------------------------------------
 
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "release")
 
 # VTK ----------------------------------------------------------
 
@@ -24,14 +24,15 @@ link_directories(${GTK3_LIBRARY_DIRS})
 add_definitions(${GTK3_CFLAGS_OTHER})
 
 # Add an executable compiled from hello.c
-add_executable(viewer "src/viewer.cc")
+#add_executable(viewer "src/viewer.cc")
 # Link the target to the GTK+ libraries
-target_link_libraries(viewer ${GTK3_LIBRARIES})
+#target_link_libraries(viewer ${GTK3_LIBRARIES})
 
 #---------------------------------------------------------------
 
 #add_definitions(-Wall)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++0x -ggdb -DELPP_THREADSAFE -DELPP_STACKTRACE_ON_CRASH -DELPP_NO_DEFAULT_LOG_FILE")
+SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 
 set(tools_PREFIX "${CMAKE_SOURCE_DIR}/../tools/install")
 
@@ -45,7 +46,7 @@ link_directories(${tools_PREFIX}/lib)
 #link_directories(build)
 
 add_executable(sebes "src/sebes.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(sebes dcmqrdb dcmjpls CharLS dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
+target_link_libraries(sebes dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap z nsl)
 
 add_executable(huz "src/huz.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(huz dcmqrdb dcmjpls CharLS dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap ${VTK_LIBRARIES} z)
+target_link_libraries(huz dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd pthread wrap z nsl)
