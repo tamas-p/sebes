@@ -31,9 +31,10 @@ message("GIT_EXECUTABLE='${GIT_EXECUTABLE}'")
 
 ExternalProject_Add(dcmtk
   PREFIX ${dcmtk_PREFIX}
-  GIT_REPOSITORY git://git.dcmtk.org/dcmtk
+  URL http://dicom.offis.de/download/dcmtk/snapshot/old/dcmtk-3.6.1_20160630.tar.gz
+#  GIT_REPOSITORY git://git.dcmtk.org/dcmtk
   INSTALL_DIR ${dcmtk_INSTALL_DIR}
-#  PATCH_COMMAND patch -p1 -i ${CMAKE_SOURCE_DIR}/setsockopt.patch 
+  PATCH_COMMAND patch -p1 -i ${CMAKE_SOURCE_DIR}/setsockopt.patch 
   CMAKE_ARGS ${dcmtk_CMAKE_ARGS}
 )
 

@@ -149,8 +149,8 @@ int main(int argc, char *argv[]) {
   START_EASYLOGGINGPP(argc, argv);
   TIMED_FUNC(timerObj);
 
-  // el::Configurations conf("easylogging.conf");
-  // el::Loggers::reconfigureAllLoggers(conf);
+  el::Configurations conf("easylogging.conf");
+  el::Loggers::reconfigureAllLoggers(conf);
 
   el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format,
                                      "%datetime %level %file:%line : %msg");

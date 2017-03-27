@@ -112,15 +112,18 @@ void convert_to_supported_transfer_syntaxes(DcmDataset* dataset) {
     DcmXfer xferobj(ts);
 
     std::string result_str;
-    if (dataset->chooseRepresentation(xferobj.getXfer(), 0).good()) {
+    std::string reason = "";
+    OFCondition res = dataset->chooseRepresentation(xferobj.getXfer(), 0);
+    if (res.good()) {
       result_str = "conversion OK";
     } else {
-      result_str = "convesrion ERROR";
+      result_str = "conversion ERROR: ";
+      reason = res.text();
     }
 
     LOG(INFO) << xferobj.getXferName()
               << " (" <<  xferobj.getXferID() << ") "
-              << result_str;
+              << result_str << reason;
   }
 }
 
@@ -619,7 +622,7 @@ void storescp_accept_association(T_ASC_Network* network,
   int ts_size = DIM_OF(ts);
   CHK(ASC_acceptContextsWithPreferredTransferSyntaxes((*assoc)->params,
                                                       dcmAllStorageSOPClassUIDs,
-                                                      numberOfDcmAllStorageSOPClassUIDs,
+                                                      numberOfAllDcmStorageSOPClassUIDs,
                                                       ts,
                                                       ts_size));
 
@@ -810,7 +813,7 @@ void* storescp_thread(void* pass) {
   int ts_size = DIM_OF(transfer_syntaxes);
   CHK(ASC_acceptContextsWithPreferredTransferSyntaxes(assoc->params,
                                                       dcmAllStorageSOPClassUIDs,
-                                                      numberOfDcmAllStorageSOPClassUIDs,
+                                                      numberOfAllDcmStorageSOPClassUIDs,
                                                       transfer_syntaxes,
                                                       ts_size));
 
@@ -1024,14 +1027,14 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after ASC_findAcceptedPresentationContextID");
   
   //-------------------------------------
-  DcmElement* qrlevel_element = DcmItem::newDicomElement(DCM_QueryRetrieveLevel);
+  DcmElement* qrlevel_element = newDicomElement(DCM_QueryRetrieveLevel);
   DcmElement* uid_element;
   if (level == Dicom::SERIES) {
     qrlevel_element->putString("SERIES");
-    uid_element = DcmItem::newDicomElement(DCM_SeriesInstanceUID);
+    uid_element = newDicomElement(DCM_SeriesInstanceUID);
   } else {
     qrlevel_element->putString("STUDY");
-    uid_element = DcmItem::newDicomElement(DCM_StudyInstanceUID);
+    uid_element = newDicomElement(DCM_StudyInstanceUID);
   }
   uid_element->putString(dicom_uid.c_str());
   DcmDataset dset;
