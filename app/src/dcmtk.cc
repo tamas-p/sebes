@@ -956,12 +956,12 @@ void* storescp_thread(void* pass) {
 
   clock_gettime(CLOCK_MONOTONIC, &tend);
   double cstore_time =
-    ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
-    ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
+    ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - 
+    ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec);
 
   LOG(INFO) << "store_scp DONE in " << cstore_time
-            << " ms; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1000000
-            << " [Mbit/s]";
+            << " s; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1.0e+6
+            << " Mbit/s";
   
   cleanup_f(assoc);
   pthread_exit(NULL);
