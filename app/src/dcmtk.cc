@@ -790,7 +790,10 @@ static void storescp_provider_callback(void* callback_data,
 //------------------------------------------------------------------------------
 
 void* storescp_thread(void* pass) {
- 
+
+  struct timespec tstart={0,0}, tend={0,0};
+  clock_gettime(CLOCK_MONOTONIC, &tstart);
+  
   // T_ASC_Association* subop_association;
   T_ASC_Network* network;
   int timeout = INT_MAX;
@@ -951,6 +954,15 @@ void* storescp_thread(void* pass) {
   LOG(INFO) << "Number of images received: " << num_images_received;
   LOG(INFO) << "Number of bytes received: " << num_bytes_received;
 
+  clock_gettime(CLOCK_MONOTONIC, &tend);
+  double cstore_time =
+    ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
+    ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
+
+  LOG(INFO) << "store_scp DONE in " << cstore_time
+            << " ms; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1000000
+            << " [Mbit/s]";
+  
   cleanup_f(assoc);
   pthread_exit(NULL);
 }
@@ -977,6 +989,9 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
                                  const std::string& dicom_uid,
                                  const std::string& xfer) {
   TIMED_FUNC(timerObj);
+
+  struct timespec tstart={0,0}, tend={0,0};
+  clock_gettime(CLOCK_MONOTONIC, &tstart);
 
   T_ASC_Parameters* params;
   CHK(ASC_createAssociationParameters(&params, ASC_DEFAULTMAXPDU));
@@ -1087,7 +1102,13 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   LOG(INFO) << "after moveUser";
 
   cleanup_f(assoc);
-  LOG(INFO) << "movescu DONE";
+
+  clock_gettime(CLOCK_MONOTONIC, &tend);
+  double cmove_time =
+    ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
+    ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
+
+  LOG(INFO) << "movescu DONE in " << cmove_time << " ms";
 
   void* status;
   pthread_join(thread, &status);
