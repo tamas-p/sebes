@@ -8,6 +8,7 @@
 
 // DCMTK
 #include <dcmtk/dcmnet/assoc.h>
+#include <dcmtk/dcmnet/dimse.h>
 
 //------------------------------------------------------------------------------
 
@@ -40,8 +41,10 @@ public:
   virtual void init();
   static void init_codec();
   virtual void waitfor_association();
-  virtual void movescp_execute();
-
+  virtual void process_request();
+  virtual void movescp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContextID& presID);
+  virtual void findscp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContextID& presID);
+  
   virtual void movescu_execute(const std::string& raet,
                                const std::string& raddress,
                                Dicom::QueryLevel level,

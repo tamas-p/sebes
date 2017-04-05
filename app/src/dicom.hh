@@ -136,7 +136,7 @@ public:
   
   virtual void waitfor_association() = 0;
   
-  virtual void movescp_execute() = 0;
+  virtual void process_request() = 0;
   
   virtual void movescu_execute(const std::string& raet,
                                const std::string& raddress,

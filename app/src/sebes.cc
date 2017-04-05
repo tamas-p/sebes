@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
     } else {
       if (pid == 0) {
         LOG(INFO) << "Executing work in child";
-        dicom->movescp_execute();
+        dicom->process_request();
         return 0;
       } else {
         LOG(INFO) << "Cleaning up the parent";

@@ -1,4 +1,4 @@
-// Copyright 2016 Tamas Palagyi
+// Copyright 2017 Tamas Palagyi
 
 #include "dcmtk.hh"
 
@@ -277,6 +277,10 @@ struct CallbackData_SCP {
   ImageStore::ImageMap::const_iterator image_it_;
   ImageStore::ImageMap::const_iterator image_it_end_;
 
+  ImageStore::SeriesMap* series_response_;
+  ImageStore::SeriesMap::const_iterator series_it_;
+  ImageStore::SeriesMap::const_iterator series_it_end_;
+  
   std::string raet_;
   std::string rhost_;
 
@@ -516,7 +520,7 @@ static void move_provider_callback(/* in */
 
 //------------------------------------------------------------------------------
 
-void DicomDcmtk::movescp_execute() {
+void DicomDcmtk::process_request() {
   // T_ASC_Association* assoc;
   // CHK(ASC_receiveAssociation(network_, &assoc, ASC_DEFAULTMAXPDU));
 
@@ -538,22 +542,177 @@ void DicomDcmtk::movescp_execute() {
   CHK(ASC_acknowledgeAssociation(assoc_));
   info_association_ac(assoc_);
 
-  T_DIMSE_Message msg;
-  T_ASC_PresentationContextID presID;
-  CHK(DIMSE_receiveCommand(assoc_, DIMSE_BLOCKING, 0, &presID, &msg, NULL));
+  while (1) {
+    T_DIMSE_Message msg;
+    T_ASC_PresentationContextID presID;
+    OFCondition cond = DIMSE_receiveCommand(assoc_, DIMSE_BLOCKING, 0, &presID, &msg, NULL);
 
-  switch (msg.CommandField) {
-  case DIMSE_C_MOVE_RQ:
-    LOG(INFO) << "C-MOVE request.";
-    break;
-  default:
-    LOG(ERROR) << "Cannot handle command: 0x"
-               << STD_NAMESPACE hex << (unsigned)msg.CommandField
-               << ", cleaning up and returning...";
-    cleanup_f(assoc_);
-    return;
+    if (cond.bad()) {
+      if (cond == DUL_PEERREQUESTEDRELEASE) {
+        LOG(INFO) << "Association Release";
+        cond = ASC_acknowledgeRelease(assoc_);
+      }
+      else if (cond == DUL_PEERABORTEDASSOCIATION) {
+        LOG(INFO) << "Association Aborted";
+      }
+      else  {
+        OFString temp_str;
+        LOG(ERROR) << "DIMSE failure (aborting association): " << DimseCondition::dump(temp_str, cond);
+        /* some kind of error so abort the association */
+        cond = ASC_abortAssociation(assoc_);
+      }
+      
+      break;
+    }
+
+    switch (msg.CommandField) {
+    case DIMSE_C_MOVE_RQ:
+      LOG(INFO) << "C-MOVE request.";
+      movescp_execute(msg, presID);
+      break;
+    case DIMSE_C_FIND_RQ:
+      LOG(INFO) << "C-FIND request.";
+      findscp_execute(msg, presID);
+      break;
+    default:
+      LOG(ERROR) << "Cannot handle command: 0x"
+                 << STD_NAMESPACE hex << (unsigned)msg.CommandField;
+      break;
+    }
   }
+}
 
+void find_provider_callback(/* in */
+                            void *callbackData,
+                            OFBool cancelled,
+                            T_DIMSE_C_FindRQ *request,
+                            DcmDataset *requestIdentifiers,
+                            int responseCount,
+                            /* out */
+                            T_DIMSE_C_FindRSP *response,
+                            DcmDataset **responseIdentifiers,
+                            DcmDataset **statusDetail) {
+
+    LOG(INFO) << "Find callback is called.";
+    CallbackData_SCP* callback_data = static_cast<CallbackData_SCP*>(callbackData);
+    
+    OFString qrlevel;
+    requestIdentifiers->findAndGetOFString(DCM_QueryRetrieveLevel, qrlevel);
+
+    if (qrlevel.compare("STUDY") == 0) {
+      LOG(INFO) << "QR level is STUDY";
+
+      if (responseCount == 1) {
+        std::cout << "Request:" << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        requestIdentifiers->print(std::cout);
+        std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "cancelled: " << cancelled << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "responseCount: " << responseCount << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        
+        OFString study_uid;
+        requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
+      
+        try {
+          callback_data->series_response_ = new ImageStore::SeriesMap();
+          const ImageStore::SeriesMap& series_image_map =
+            callback_data->imagestore_->hi_study_map_.at(study_uid.c_str());
+          callback_data->series_response_->insert(series_image_map.cbegin(), series_image_map.cend());
+          
+          callback_data->series_it_ = callback_data->series_response_->cbegin();
+          callback_data->series_it_end_ = callback_data->series_response_->cend();
+        }
+        catch (const std::out_of_range& ex) {
+        }
+      }
+
+      if (callback_data->series_it_ == callback_data->series_it_end_) {
+        response->DimseStatus = STATUS_Success;
+        return;
+      }
+
+      DcmDataset* dset = new DcmDataset;
+      std::string series_uid = callback_data->series_it_->first;
+      LOG(INFO) << "Series Instance UID: " << series_uid;
+      
+      DcmElement* uid_element;
+      uid_element = newDicomElement(DCM_SeriesInstanceUID);
+      uid_element->putString(series_uid.c_str());
+      dset->insert(uid_element, OFTrue);
+      *responseIdentifiers = dset;
+      
+      ++callback_data->series_it_;
+    } else if (qrlevel.compare("SERIES") == 0) {
+      LOG(INFO) << "QR level is SERIES";
+      OFString series_uid;
+      requestIdentifiers->findAndGetOFString(DCM_SeriesInstanceUID, series_uid);
+
+      if (responseCount == 1) {
+        std::cout << "Request:" << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        requestIdentifiers->print(std::cout);
+        std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "cancelled: " << cancelled << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        std::cout << "responseCount: " << responseCount << std::endl;
+        std::cout << "----------------------------------------------------------" << std::endl;
+        
+        callback_data->response_ = new ImageStore::ImageMap();
+
+        try {
+          const ImageStore::ImageMap& series_image_map =
+            callback_data->imagestore_->series_map_.at(series_uid.c_str());
+          
+          callback_data->response_->insert(series_image_map.cbegin(), series_image_map.cend());
+
+          callback_data->image_it_ = callback_data->response_->cbegin();
+          callback_data->image_it_end_ = callback_data->response_->cend();
+        }
+        catch (const std::out_of_range& ex) {
+        }
+      }
+
+      if (callback_data->image_it_ == callback_data->image_it_end_) {
+        response->DimseStatus = STATUS_Success;
+        return;
+      }
+
+      DcmDataset* dset = new DcmDataset;
+      std::string sop_uid = callback_data->image_it_->first;
+      LOG(INFO) << "SOP Instance UID: " << sop_uid;
+      
+      DcmElement* uid_element;
+      uid_element = newDicomElement(DCM_SOPInstanceUID);
+      uid_element->putString(sop_uid.c_str());
+      dset->insert(uid_element, OFTrue);
+      *responseIdentifiers = dset;
+      
+      ++callback_data->image_it_;
+    } else {
+      LOG(ERROR) << "Not supported QR level.";
+    }
+
+    response->DimseStatus = STATUS_Pending;
+}
+
+void DicomDcmtk::findscp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContextID& presID) {
+  LOG(INFO) << "C-FIND request indeed...";
+
+  CallbackData_SCP callback_data;
+  callback_data.imagestore_ = imagestore_;
+
+  OFCondition cond = DIMSE_findProvider(assoc_,
+                                        presID,
+                                        &msg.msg.CFindRQ,
+                                        find_provider_callback,
+                                        &callback_data,
+                                        DIMSE_BLOCKING,
+                                        timeout_);
+}
+
+void DicomDcmtk::movescp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContextID& presID) {
   T_DIMSE_C_MoveRQ* request = &msg.msg.CMoveRQ;
   std::string rhost;
   try {
@@ -806,6 +965,8 @@ void* storescp_thread(void* pass) {
   T_ASC_Association* assoc;
   LOG(INFO) << "accept store association started";
   CHK(ASC_receiveAssociation(network, &assoc, ASC_DEFAULTMAXPDU));
+  OFString str;
+  LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
 
   const char* transfer_syntaxes[] = {cbd->xfer_.c_str()};
 
@@ -814,12 +975,15 @@ void* storescp_thread(void* pass) {
                                      UID_LittleEndianImplicitTransferSyntax};*/
 
   int ts_size = DIM_OF(transfer_syntaxes);
+
   CHK(ASC_acceptContextsWithPreferredTransferSyntaxes(assoc->params,
                                                       dcmAllStorageSOPClassUIDs,
                                                       numberOfAllDcmStorageSOPClassUIDs,
                                                       transfer_syntaxes,
                                                       ts_size));
 
+  LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
+  
   OFCondition cond_aa = ASC_acknowledgeAssociation(assoc);
 
   if (cond_aa.bad()) {
@@ -1008,7 +1172,10 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
   // This is for the C-MOVE SCU request, does not matter that much as the
   // C-STORE SCP accept part of the C-STORE negotiation.
-  const char* ts[] = {UID_JPEGLSLosslessTransferSyntax,
+
+  const char* ts[] = {UID_LittleEndianImplicitTransferSyntax}; // xfer.c_str()};
+  
+  const char* ts2[] = {UID_JPEGLSLosslessTransferSyntax,
                       UID_LittleEndianExplicitTransferSyntax,
                       UID_LittleEndianImplicitTransferSyntax,
                       UID_BigEndianExplicitTransferSyntax,
@@ -1079,7 +1246,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
   pthread_t thread;
   start_storescp(&thread, &callback_data);
-  
+    
   T_DIMSE_C_MoveRSP rsp;
   CHK(DIMSE_moveUser(  // in
                      assoc,

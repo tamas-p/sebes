@@ -27,6 +27,12 @@ class ImageStore {
   typedef std::map<StudyUID, ImageMap> StudyMap;
   StudyMap study_map_;
 
+  
+  // Hierarchical studies map
+  //typedef std::map<StudyUID, SeriesMap> HiStudyMap;
+  typedef std::map<StudyUID, SeriesMap> HiStudyMap;
+  HiStudyMap hi_study_map_;
+  
   explicit ImageStore(const std::string& path);
   void print() const;
 };

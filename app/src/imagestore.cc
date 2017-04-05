@@ -74,6 +74,9 @@ void ImageStore::fill_study_map(const std::string& path) {
     // register image into study_map_
     study_map_[image->study_uid_][image->instance_uid_] = image;
 
+    // register image into hi_study_map_
+    hi_study_map_[image->study_uid_][image->series_uid_][image->instance_uid_] = image;
+
     LOG(INFO) << "Added " << image->source_
               << " - Xfer: " << image->transfer_syntax_uid_
               << " - Dset: " << image->dataset_
