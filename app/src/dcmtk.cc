@@ -21,6 +21,9 @@
 #include "dcmtk/dcmdata/dcrleerg.h"  /* for RLE encoder */
 #include "dcmtk/dcmnet/dimse.h"
 
+#include "fmjpeg2k/djdecode.h" /* for J2K decoder */
+#include "fmjpeg2k/djencode.h" /* for J2K encoder */
+
 #include "imagestore.hh"
 
 //------------------------------------------------------------------------------
@@ -31,7 +34,9 @@ const char* _transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
                                     UID_LittleEndianImplicitTransferSyntax,
                                     UID_JPEGLSLosslessTransferSyntax,
                                     UID_JPEGProcess14SV1TransferSyntax,
-                                    UID_RLELosslessTransferSyntax};
+                                    UID_RLELosslessTransferSyntax,
+                                    UID_JPEG2000TransferSyntax,
+                                    UID_JPEG2000LosslessOnlyTransferSyntax};
 
 const int _numTransferSyntaxes = DIM_OF(_transfer_syntaxes);;
 
@@ -175,6 +180,7 @@ void DicomDcmtk::init_codec() {
   DJLSEncoderRegistration::registerCodecs();
   DJEncoderRegistration::registerCodecs();
   DcmRLEEncoderRegistration::registerCodecs();
+  FMJPEG2KEncoderRegistration::registerCodecs();
 }
 
 //------------------------------------------------------------------------------
@@ -1041,6 +1047,7 @@ void* storescp_thread(void* pass) {
                                          0,
                                          0));
         num_images_received++;
+        VLOG(1) << "Received dset length: " << dset->getLength();
         num_bytes_received += dset->getLength();
       }
 

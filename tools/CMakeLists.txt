@@ -6,6 +6,9 @@ if(GIT_FOUND)
   message("git found: ${GIT_EXECUTABLE}")
 endif()
 
+#set(CMAKE_CXX_STANDARD 11)
+#set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # For tools ----------------------------------------------------
 
 set(INSTALL_DIR "${CMAKE_SOURCE_DIR}/install")
@@ -40,14 +43,33 @@ ExternalProject_Add(dcmtk
 
 message("INSTALL_DIR='${INSTALL_DIR}'")
 
+# Building OpenJPEG --------------------------------------------
+
 ExternalProject_Add(ojpg
   #INSTALL_DIR /tmp
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DBUILD_SHARED_LIBS=OFF
   PREFIX "openjpeg"
   GIT_REPOSITORY https://github.com/uclouvain/openjpeg.git
 )
 
 ExternalProject_Get_Property(${openjpeg} install_dir)
+
+# Building fmjpeg2koj ------------------------------------------
+
+ExternalProject_Add(fmjpeg2koj DEPENDS dcmtk ojpg
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
+  -DBUILD_SHARED_LIBS=OFF
+  -DOPENJPEG=${INSTALL_DIR}
+  -DDCMTK_DIR=${INSTALL_DIR}
+  -DBUILD_SHARED_LIBS=OFF
+  -DCMAKE_CXX_STANDARD=11
+
+  PREFIX "fmjpeg2koj"
+  GIT_REPOSITORY https://github.com/DraconPern/fmjpeg2koj.git
+)
+
+ExternalProject_Get_Property(${openjpeg} install_dir)
+
 
 # Building Easylogging++ ---------------------------------------
 
