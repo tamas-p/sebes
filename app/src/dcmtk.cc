@@ -1,4 +1,4 @@
-// Copyright 2017 Tamas Palagyi
+// Copyright 2016 Tamas Palagyi
 
 #include "dcmtk.hh"
 
@@ -21,6 +21,9 @@
 #include "dcmtk/dcmdata/dcrleerg.h"  /* for RLE encoder */
 #include "dcmtk/dcmnet/dimse.h"
 
+#include "dcmtk/dcmdata/dctk.h" 
+#include "dcmtk/dcmdata/dcpxitem.h"
+ 
 #include "fmjpeg2k/djdecode.h" /* for J2K decoder */
 #include "fmjpeg2k/djencode.h" /* for J2K encoder */
 
@@ -1047,8 +1050,9 @@ void* storescp_thread(void* pass) {
                                          0,
                                          0));
         num_images_received++;
-        VLOG(1) << "Received dset length: " << dset->getLength();
-        num_bytes_received += dset->getLength();
+
+        VLOG(1) << "Received dset length: " << dset->getLength(dset->getOriginalXfer());
+        num_bytes_received += dset->getLength(dset->getOriginalXfer());
       }
 
       T_DIMSE_C_StoreRSP response;
@@ -1179,10 +1183,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
   // This is for the C-MOVE SCU request, does not matter that much as the
   // C-STORE SCP accept part of the C-STORE negotiation.
-
-  const char* ts[] = {UID_LittleEndianImplicitTransferSyntax}; // xfer.c_str()};
-  
-  const char* ts2[] = {UID_JPEGLSLosslessTransferSyntax,
+  const char* ts[] = {UID_JPEGLSLosslessTransferSyntax,
                       UID_LittleEndianExplicitTransferSyntax,
                       UID_LittleEndianImplicitTransferSyntax,
                       UID_BigEndianExplicitTransferSyntax,
@@ -1356,3 +1357,56 @@ void show_viewer(DcmDataset* dataset) {
 }
 */
 //------------------------------------------------------------------------------
+
+// Only to study processing of compressed transfer syntaxes.
+void processCompressed(DcmDataset* dset) {
+  DcmElement* element = NULL;
+  OFCondition result = dset->findAndGetElement(DCM_PixelData, element);
+  if (result.bad()) {
+    LOG(ERROR) << "Could not reach PixelData.";
+  }
+        
+  LOG(INFO) << "Pixeldata is found.";
+        
+  DcmPixelData *dpix = NULL;
+  dpix = OFstatic_cast(DcmPixelData*, element);
+  /* Since we have compressed data, we must utilize DcmPixelSequence
+     in order to access it in raw format, e. g. for decompressing it
+     with an external library.
+  */
+  E_TransferSyntax xferSyntax = EXS_Unknown;
+  const DcmRepresentationParameter *rep = NULL;
+  // Find the key that is needed to access the right representation of the data within DCMTK
+  dpix->getOriginalRepresentationKey(xferSyntax, rep);
+
+  VLOG(1) << "Received dset length 2: " << dset->getLength(xferSyntax);
+        
+  // Access original data representation and get result within pixel sequence
+  DcmPixelSequence *dseq = NULL;
+  result = dpix->getEncapsulatedRepresentation(xferSyntax, rep, dseq);
+  if ( result == EC_Normal ) {
+    LOG(INFO) << "Pixel SEQ is found";
+    DcmPixelItem* pixitem = NULL;
+    // Access first frame (skipping offset table)
+    dseq->getItem(pixitem, 1);
+    if (pixitem == NULL) {
+      LOG(ERROR) << "No frame.";
+      return;
+    }
+    Uint8* pixData = NULL;
+    // Get the length of this pixel item (i.e. fragment, i.e. most of the time, the lenght of the frame)
+    Uint32 length = pixitem->getLength();
+    if (length == 0) {
+      LOG(ERROR) << "Pixitem length is 0.";
+      return;
+    }
+    // Finally, get the compressed data for this pixel item
+    result = pixitem->getUint8Array(pixData);
+    // Do something useful with pixData...
+
+    LOG(INFO) << "Pixdata size is: " << pixitem->getLength();
+  }
+
+  if (result.bad())
+    LOG(ERROR) << "RETURN bad";
+}
