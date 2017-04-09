@@ -762,7 +762,7 @@ void DicomDcmtk::movescp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContext
                          DIMSE_BLOCKING,
                          timeout_));
 
-  cleanup_f(assoc_);
+  // cleanup_f(assoc_);
 }
 
 
@@ -916,7 +916,7 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
   }
 
   if (cond != EC_Normal) {
-    cleanup_f(*assoc);
+    // cleanup_f(*assoc);
   }
 
   return cond.good();
@@ -1138,7 +1138,7 @@ void* storescp_thread(void* pass) {
             << " s; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1.0e+6
             << " Mbit/s";
   
-  cleanup_f(assoc);
+  // cleanup_f(assoc);
   pthread_exit(NULL);
 }
 
@@ -1210,7 +1210,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
                                           UID_MOVEStudyRootQueryRetrieveInformationModel);
   if ( presId == 0 ) {
     LOG(ERROR) << "No accepted presentation context.";
-    cleanup_f(assoc);
+    // cleanup_f(assoc);
     return;
   }
 
@@ -1276,7 +1276,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after DIMSE_moveUser");
   LOG(INFO) << "after moveUser";
 
-  cleanup_f(assoc);
+  CHK(ASC_releaseAssociation(assoc));
 
   clock_gettime(CLOCK_MONOTONIC, &tend);
   double cmove_time =
