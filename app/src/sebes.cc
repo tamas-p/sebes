@@ -17,6 +17,7 @@ void print_usage_and_exit(const std::string& name) {
             << name
             << " --host=aet@host:port"
             << " --rhosts=aet1@host1:port1,aet2@host2:port2,..."
+            << " [--xfers=transfer_syntax_uid1,transfer_syntax_ui2,...]"
             << " --imagedir=/path/to/dicom/images"
             << " [--tcpbuffer=length]"
             << " [--norsp]"
@@ -32,6 +33,8 @@ struct Arguments {
   std::string port_;
 
   AetMap rhosts_;
+
+  Xfers xfers_;
 
   std::string imagedir_;
   bool multi_;
@@ -58,6 +61,16 @@ void parse_rhosts(AetMap* rhosts, const std::string& optarg) {
 
 //------------------------------------------------------------------------------
 
+void parse_xfers(Xfers* xfers, const std::string& optarg) {
+  std::istringstream ss(optarg);
+  std::string xfer;
+  while (std::getline(ss, xfer, ',')) {
+    xfers->insert(xfer);
+  }
+}
+
+//------------------------------------------------------------------------------
+
 void cmdparse(int argc,
               char** argv,
               Arguments* arguments) {
@@ -68,6 +81,7 @@ void cmdparse(int argc,
       {"v", optional_argument, 0, 'v'},
       {"host", required_argument, 0, 'h'},
       {"rhosts", required_argument, 0, 'r'},
+      {"xfers", required_argument, 0, 'x'},
       {"imagedir", required_argument, 0, 'd'},
       {"tcpbuffer", required_argument, 0, 'b'},
       {"norsp", no_argument, 0, 'n'},
@@ -96,6 +110,10 @@ void cmdparse(int argc,
 
     case 'r':
       parse_rhosts(&arguments->rhosts_, optarg);
+      break;
+
+    case 'x':
+      parse_xfers(&arguments->xfers_, optarg);
       break;
 
     case 'd':
@@ -144,10 +162,10 @@ void cmdparse(int argc,
 //------------------------------------------------------------------------------
 
 int main(int argc, char *argv[]) {
-  el::Configurations conf("easylogging.conf");
+  /* el::Configurations conf("easylogging.conf");
   el::Loggers::reconfigureAllLoggers(conf);
   el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format,
-                                     "%datetime %level %file:%line : %msg");
+  "%datetime %level %file:%line : %msg"); */
 
   START_EASYLOGGINGPP(argc, argv);
 
@@ -156,7 +174,19 @@ int main(int argc, char *argv[]) {
   set_tcp_buffer_length(arguments.tcp_buffer_length_);
   LOG(INFO) << basename(argv[0]) << " has been started...";
 
-  const ImageStore* imagestore = new ImageStore(arguments.imagedir_);
+  if (arguments.xfers_.empty()) {
+    LOG(INFO) << "Adding default list of Xfers.";
+    arguments.xfers_.insert(UID_LittleEndianExplicitTransferSyntax);
+    arguments.xfers_.insert(UID_BigEndianExplicitTransferSyntax);
+    arguments.xfers_.insert(UID_LittleEndianImplicitTransferSyntax);
+    arguments.xfers_.insert(UID_JPEGLSLosslessTransferSyntax);
+    arguments.xfers_.insert(UID_JPEGProcess14SV1TransferSyntax);
+    arguments.xfers_.insert(UID_RLELosslessTransferSyntax);
+    arguments.xfers_.insert(UID_JPEG2000TransferSyntax);
+    arguments.xfers_.insert(UID_JPEG2000LosslessOnlyTransferSyntax);
+  }
+
+  const ImageStore* imagestore = new ImageStore(arguments.imagedir_, arguments.xfers_);
   imagestore->print();
 
   Dicom* dicom = new DicomDcmtk(std::stoi(arguments.port_),

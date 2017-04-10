@@ -115,9 +115,9 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
 
 //------------------------------------------------------------------------------
 
-void convert_to_supported_transfer_syntaxes(DcmDataset* dataset) {
-  for (const char* ts : _transfer_syntaxes) {
-    DcmXfer xferobj(ts);
+void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xfers) {
+  for (auto xfer : xfers) {
+    DcmXfer xferobj(xfer.c_str());
 
     std::string result_str;
     std::string reason = "";
@@ -137,7 +137,7 @@ void convert_to_supported_transfer_syntaxes(DcmDataset* dataset) {
 
 //------------------------------------------------------------------------------
 
-void DicomDcmtk::load_image_file(const std::string& path, Image* image) {
+void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xfers& xfers) {
   DcmFileFormat* fileformat = new DcmFileFormat();
   CHK(fileformat->loadFile(path.c_str()));
   CHK(fileformat->loadAllDataIntoMemory());
@@ -157,7 +157,7 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image) {
     THROW_DICOM_EXCEPTION("Could not parse image.");
   }
 
-  convert_to_supported_transfer_syntaxes(dataset);
+  convert_to_supported_transfer_syntaxes(dataset, xfers);
 
   E_TransferSyntax xferid = dataset->getOriginalXfer();
   DcmXfer xferobj(xferid);

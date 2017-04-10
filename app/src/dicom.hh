@@ -10,6 +10,7 @@
 #include <map>
 #include <stdexcept>
 #include <sstream>
+#include <set>
 
 // Since DCMTK does not manage blocking select - it is not able to
 // give a NULL timeout value to select (see ASC_associationWaiting
@@ -22,6 +23,7 @@ typedef std::string SeriesUID;
 typedef std::string InstanceUID;
 typedef std::string TransferSyntaxUID;
 typedef std::map<std::string, std::string> AetMap;
+typedef std::set<std::string> Xfers;
 
 class DcmDataset;
 

@@ -44,13 +44,13 @@ void list_dir(const char* path, std::vector<std::string>* found) {
 
 //------------------------------------------------------------------------------
 
-ImageStore::ImageStore(const std::string& path) : rootdir_(path) {
-  fill_study_map(path);
+ImageStore::ImageStore(const std::string& path, const Xfers& xfers) : rootdir_(path) {
+  fill_study_map(path, xfers);
 }
 
 //------------------------------------------------------------------------------
 
-void ImageStore::fill_study_map(const std::string& path) {
+void ImageStore::fill_study_map(const std::string& path, const Xfers& xfers) {
   std::vector<std::string>* found = new std::vector<std::string>();
   list_dir(path.c_str(), found);
 
@@ -60,7 +60,7 @@ void ImageStore::fill_study_map(const std::string& path) {
     Image* image = new Image();
 
     try {
-      DicomDcmtk::load_image_file(it, image);  // FIXME, no dcmtk here
+      DicomDcmtk::load_image_file(it, image, xfers);  // FIXME, no dcmtk here
     } catch (const dicom_exception& ex) {
       continue;
     }

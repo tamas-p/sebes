@@ -37,7 +37,7 @@ public:
                       int port,
                       bool need_response);
  
-  static void load_image_file(const std::string& path, Image* image);
+  static void load_image_file(const std::string& path, Image* image, const Xfers& xfers);
   virtual void init();
   static void init_codec();
   virtual void waitfor_association();
