@@ -16,7 +16,7 @@ class ImageStore {
  public:
 
   // All images map
-  typedef std::map<InstanceUID, Image*> ImageMap;
+  typedef std::map<SOPInstanceUID, Image*> ImageMap;
   ImageMap image_map_;
 
   // All series map
@@ -26,7 +26,6 @@ class ImageStore {
   // All studies map
   typedef std::map<StudyUID, ImageMap> StudyMap;
   StudyMap study_map_;
-
   
   // Hierarchical studies map
   //typedef std::map<StudyUID, SeriesMap> HiStudyMap;

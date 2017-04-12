@@ -145,17 +145,39 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
   DcmMetaInfo* metainfo = fileformat->getMetaInfo();
   DcmDataset* dataset = fileformat->getAndRemoveDataset();
 
+  // STUDY LEVEL
+  OFString patient_id;
+  OFString patient_name;
   OFString study_uid;
+  OFString study_desc;
+
+  // SERIES LEVEL
   OFString series_uid;
-  OFString instance_uid;
+  OFString series_desc;
+
+  // IMAGE LEVEL
+  OFString sop_instance_uid;
+  OFString sop_class_uid;
+
   OFString transfer_syntax_uid;
   // We must have all three to consider it into the datastructure
-  if (dataset->findAndGetOFString(DCM_StudyInstanceUID, study_uid).bad() ||
+  if (// STUDY LEVEL
+      dataset->findAndGetOFString(DCM_PatientID, patient_id).bad() ||
+      dataset->findAndGetOFString(DCM_PatientName, patient_name).bad() ||
+      dataset->findAndGetOFString(DCM_StudyInstanceUID, study_uid).bad() ||
+      // SERIES LEVEL
       dataset->findAndGetOFString(DCM_SeriesInstanceUID, series_uid).bad() ||
-      dataset->findAndGetOFString(DCM_SOPInstanceUID, instance_uid).bad() ||
+      // IMAGE LEVEL
+      dataset->findAndGetOFString(DCM_SOPInstanceUID, sop_instance_uid).bad() ||
+
       metainfo->findAndGetOFString(DCM_TransferSyntaxUID, transfer_syntax_uid).bad()) {
     THROW_DICOM_EXCEPTION("Could not parse image.");
   }
+
+  // OPTIONALS
+  dataset->findAndGetOFString(DCM_StudyDescription, study_desc);
+  dataset->findAndGetOFString(DCM_SeriesDescription, series_desc);
+  dataset->findAndGetOFString(DCM_SOPClassUID, sop_class_uid);
 
   convert_to_supported_transfer_syntaxes(dataset, xfers);
 
@@ -166,11 +188,20 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
           << " (" <<  xferobj.getXferID() << ")";
 
   image->dataset_ = dataset;
+  std::cout << "SOP Instance UID: " << sop_instance_uid << std::endl;
   image->init(path,
               transfer_syntax_uid.c_str(),
+
+              patient_id.c_str(),
+              patient_name.c_str(),
               study_uid.c_str(),
+              study_desc.c_str(),
+
               series_uid.c_str(),
-              instance_uid.c_str());
+              series_desc.c_str(),
+
+              sop_instance_uid.c_str(),
+              sop_class_uid.c_str());
 }
 
 //------------------------------------------------------------------------------
@@ -591,6 +622,12 @@ void DicomDcmtk::process_request() {
   }
 }
 
+DcmElement* create_element(const std::string& str, const DcmTagKey& tag_key) {
+  DcmElement* element = newDicomElement(tag_key);
+  element->putString(str.c_str());
+  return element;
+}
+
 void find_provider_callback(/* in */
                             void *callbackData,
                             OFBool cancelled,
@@ -602,108 +639,212 @@ void find_provider_callback(/* in */
                             DcmDataset **responseIdentifiers,
                             DcmDataset **statusDetail) {
 
-    LOG(INFO) << "Find callback is called.";
-    CallbackData_SCP* callback_data = static_cast<CallbackData_SCP*>(callbackData);
+  VLOG(1) << "Find callback is called.";
+  CallbackData_SCP* callback_data = static_cast<CallbackData_SCP*>(callbackData);
     
-    OFString qrlevel;
-    requestIdentifiers->findAndGetOFString(DCM_QueryRetrieveLevel, qrlevel);
+  OFString qrlevel;
+  requestIdentifiers->findAndGetOFString(DCM_QueryRetrieveLevel, qrlevel);
 
-    if (qrlevel.compare("STUDY") == 0) {
+  if (responseCount == 1) {
+    std::cout << "Request:" << std::endl;
+    std::cout << "----------------------------------------------------------" << std::endl;
+    requestIdentifiers->print(std::cout);
+    std::cout << "----------------------------------------------------------" << std::endl;
+    std::cout << "cancelled: " << cancelled << std::endl;
+    std::cout << "----------------------------------------------------------" << std::endl;
+    std::cout << "responseCount: " << responseCount << std::endl;
+    std::cout << "----------------------------------------------------------" << std::endl;
+  }
+
+  if (qrlevel.compare("STUDY") == 0) {
+    if (responseCount == 1) {
       LOG(INFO) << "QR level is STUDY";
 
-      if (responseCount == 1) {
-        std::cout << "Request:" << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
-        requestIdentifiers->print(std::cout);
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "cancelled: " << cancelled << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "responseCount: " << responseCount << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
+      OFString study_uid;
+      requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
+      
+      callback_data->response_ = new ImageStore::ImageMap();
+
+      ImageStore::HiStudyMap sm = callback_data->imagestore_->hi_study_map_;
+      
+      if (study_uid.empty() || study_uid.compare("*") == 0) {
+        // Wildcard matching = we give back all series in study
+
+        for (auto series_iterator : sm) {
+          // FIXME check if image is there
+          callback_data->response_->insert(*series_iterator.second.begin()->second.begin());
+        }
         
-        OFString study_uid;
-        requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
-      
-        try {
-          callback_data->series_response_ = new ImageStore::SeriesMap();
-          const ImageStore::SeriesMap& series_image_map =
-            callback_data->imagestore_->hi_study_map_.at(study_uid.c_str());
-          callback_data->series_response_->insert(series_image_map.cbegin(), series_image_map.cend());
-          
-          callback_data->series_it_ = callback_data->series_response_->cbegin();
-          callback_data->series_it_end_ = callback_data->series_response_->cend();
-        }
-        catch (const std::out_of_range& ex) {
-        }
-      }
+        callback_data->image_it_ = callback_data->response_->cbegin();
+        callback_data->image_it_end_ = callback_data->response_->cend();
+      } else { // We only provide back one series that matches Series UID 
 
-      if (callback_data->series_it_ == callback_data->series_it_end_) {
-        response->DimseStatus = STATUS_Success;
-        return;
-      }
+        auto series_iterator = sm.find(study_uid.c_str());
+        if  (series_iterator == sm.end()) {
+          response->DimseStatus = STATUS_Success;
+          return;
+        }
 
-      DcmDataset* dset = new DcmDataset;
-      std::string series_uid = callback_data->series_it_->first;
-      LOG(INFO) << "Series Instance UID: " << series_uid;
-      
-      DcmElement* uid_element;
-      uid_element = newDicomElement(DCM_SeriesInstanceUID);
-      uid_element->putString(series_uid.c_str());
-      dset->insert(uid_element, OFTrue);
-      *responseIdentifiers = dset;
-      
-      ++callback_data->series_it_;
-    } else if (qrlevel.compare("SERIES") == 0) {
+        // FIXME check if image is there
+        callback_data->response_->insert(*series_iterator->second.begin()->second.begin());
+        
+        callback_data->image_it_ = callback_data->response_->cbegin();
+        callback_data->image_it_end_ = callback_data->response_->cend();
+      }
+    }
+ 
+    if (callback_data->image_it_ == callback_data->image_it_end_) {
+      response->DimseStatus = STATUS_Success;
+      return;
+    }
+
+    DcmDataset* dset = new DcmDataset;
+
+    dset->insert(create_element(callback_data->image_it_->second->patient_name_, DCM_PatientName));
+    dset->insert(create_element(callback_data->image_it_->second->patient_id_, DCM_PatientID));
+    dset->insert(create_element(callback_data->image_it_->second->study_uid_.c_str(), DCM_StudyInstanceUID));
+    // dset->insert(create_element(callback_data->image_it_->second->series_uid_.c_str(), DCM_SeriesInstanceUID));
+    dset->insert(create_element(callback_data->image_it_->second->study_desc_, DCM_StudyDescription));
+    // dset->insert(create_element(callback_data->image_it_->second->series_desc_, DCM_SeriesDescription));
+
+    *responseIdentifiers = dset;
+    response->DimseStatus = STATUS_Pending;
+    ++callback_data->image_it_;
+  } else if (qrlevel.compare("SERIES") == 0) {
+
+    if (responseCount == 1) {
       LOG(INFO) << "QR level is SERIES";
+
+      OFString study_uid;
+      requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
       OFString series_uid;
       requestIdentifiers->findAndGetOFString(DCM_SeriesInstanceUID, series_uid);
+      
+      callback_data->response_ = new ImageStore::ImageMap();
 
-      if (responseCount == 1) {
-        std::cout << "Request:" << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
-        requestIdentifiers->print(std::cout);
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "cancelled: " << cancelled << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
-        std::cout << "responseCount: " << responseCount << std::endl;
-        std::cout << "----------------------------------------------------------" << std::endl;
+      ImageStore::HiStudyMap sm = callback_data->imagestore_->hi_study_map_;
+
+      LOG(INFO) << "Series Instamnce UID: " << series_uid;
+      if (series_uid.empty() || series_uid.compare("*") == 0) {
+        // Wildcard matching = we give back all series in study
+
+        auto study_iterator = sm.find(study_uid.c_str());
+        if  (study_iterator == sm.end()) {
+          response->DimseStatus = STATUS_Success;
+          return;
+        }
+
+        LOG(INFO) << "SeriesMap size: " << study_iterator->second.size();
+        for (auto image_iterator : study_iterator->second) {
+          callback_data->response_->insert(*image_iterator.second.begin());
+        }
         
-        callback_data->response_ = new ImageStore::ImageMap();
+        callback_data->image_it_ = callback_data->response_->cbegin();
+        callback_data->image_it_end_ = callback_data->response_->cend();
+      } else { // We only provide back one series that matches Series UID 
 
-        try {
-          const ImageStore::ImageMap& series_image_map =
-            callback_data->imagestore_->series_map_.at(series_uid.c_str());
-          
-          callback_data->response_->insert(series_image_map.cbegin(), series_image_map.cend());
+        auto study_iterator = sm.find(study_uid.c_str());
+        if  (study_iterator == sm.end()) {
+          response->DimseStatus = STATUS_Success;
+          return;
+        }
+
+        auto series_iterator = study_iterator->second.find(series_uid.c_str());
+        if  (series_iterator == study_iterator->second.end()) {
+          response->DimseStatus = STATUS_Success;
+          return;
+        }
+        
+        auto image_iterator = series_iterator->second.begin();
+        if  (image_iterator == series_iterator->second.end()) {
+          response->DimseStatus = STATUS_Success;
+          return;
+        }
+
+        callback_data->response_->insert(*image_iterator);
+        
+        callback_data->image_it_ = callback_data->response_->cbegin();
+        callback_data->image_it_end_ = callback_data->response_->cend();
+      }
+    }
+ 
+    if (callback_data->image_it_ == callback_data->image_it_end_) {
+      response->DimseStatus = STATUS_Success;
+      return;
+    }
+
+    DcmDataset* dset = new DcmDataset;
+
+    dset->insert(create_element(callback_data->image_it_->second->patient_name_, DCM_PatientName));
+    dset->insert(create_element(callback_data->image_it_->second->patient_id_, DCM_PatientID));
+    dset->insert(create_element(callback_data->image_it_->second->study_uid_.c_str(), DCM_StudyInstanceUID));
+    dset->insert(create_element(callback_data->image_it_->second->series_uid_.c_str(), DCM_SeriesInstanceUID));
+    dset->insert(create_element(callback_data->image_it_->second->study_desc_, DCM_StudyDescription));
+    dset->insert(create_element(callback_data->image_it_->second->series_desc_, DCM_SeriesDescription));
+
+    *responseIdentifiers = dset;
+    response->DimseStatus = STATUS_Pending;
+    ++callback_data->image_it_;
+  } else if (qrlevel.compare("IMAGE") == 0) {
+
+    if (responseCount == 1) {
+      LOG(INFO) << "QR level is IMAGE";
+
+      OFString study_uid;
+      requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
+      OFString series_uid;
+      requestIdentifiers->findAndGetOFString(DCM_SeriesInstanceUID, series_uid);
+      OFString instance_uid;
+      requestIdentifiers->findAndGetOFString(DCM_SOPInstanceUID, instance_uid);
+
+      callback_data->response_ = new ImageStore::ImageMap();
+
+      if (instance_uid.empty() || instance_uid.compare("*") == 0) {
+        // Wildcard matching = we give back all images in the series
+
+        auto series_image_map_iterator =
+          callback_data->imagestore_->series_map_.find(series_uid.c_str());
+        if (series_image_map_iterator != callback_data->imagestore_->series_map_.end()) {
+          callback_data->response_->insert(series_image_map_iterator->second.cbegin(),
+                                           series_image_map_iterator->second.cend());
+        }
+        
+        callback_data->image_it_ = callback_data->response_->cbegin();
+        callback_data->image_it_end_ = callback_data->response_->cend();
+      } else { // We only provide back one image that matches SOP Instance UID
+
+        auto series_image_map_iterator =
+          callback_data->imagestore_->series_map_.find(series_uid.c_str());
+        if (series_image_map_iterator != callback_data->imagestore_->series_map_.end()) {
+          auto image_iterator = series_image_map_iterator->second.find(instance_uid.c_str());
+
+          if (image_iterator != series_image_map_iterator->second.end()) {
+            callback_data->response_->insert(*image_iterator);
+          }
 
           callback_data->image_it_ = callback_data->response_->cbegin();
           callback_data->image_it_end_ = callback_data->response_->cend();
         }
-        catch (const std::out_of_range& ex) {
-        }
       }
-
-      if (callback_data->image_it_ == callback_data->image_it_end_) {
-        response->DimseStatus = STATUS_Success;
-        return;
-      }
-
-      DcmDataset* dset = new DcmDataset;
-      std::string sop_uid = callback_data->image_it_->first;
-      LOG(INFO) << "SOP Instance UID: " << sop_uid;
-      
-      DcmElement* uid_element;
-      uid_element = newDicomElement(DCM_SOPInstanceUID);
-      uid_element->putString(sop_uid.c_str());
-      dset->insert(uid_element, OFTrue);
-      *responseIdentifiers = dset;
-      
-      ++callback_data->image_it_;
-    } else {
-      LOG(ERROR) << "Not supported QR level.";
+    }
+ 
+    if (callback_data->image_it_ == callback_data->image_it_end_) {
+      response->DimseStatus = STATUS_Success;
+      return;
     }
 
-    response->DimseStatus = STATUS_Pending;
+    DcmDataset* dset = new DcmDataset;
+
+    dset->insert(create_element(callback_data->image_it_->first, DCM_SOPInstanceUID));
+    dset->insert(create_element(callback_data->image_it_->second->sop_class_uid_, DCM_SOPClassUID));
+
+    *responseIdentifiers = dset;
+    ++callback_data->image_it_;
+  } else {
+    LOG(ERROR) << "Not supported QR level.";
+  }
+
+  response->DimseStatus = STATUS_Pending;
 }
 
 void DicomDcmtk::findscp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContextID& presID) {

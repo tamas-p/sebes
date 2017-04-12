@@ -18,9 +18,20 @@
 // 2147483647 seconds ~ 68 years on my x86_64.
 #define TIMEOUT INT_MAX
 
+// STUDY LEVEL
+typedef std::string PatientID;
+typedef std::string PatientName;
 typedef std::string StudyUID;
+typedef std::string StudyDesc;
+
+// SERIES LEVEL
 typedef std::string SeriesUID;
-typedef std::string InstanceUID;
+typedef std::string SeriesDesc;
+
+// IMAGE LEVEL
+typedef std::string SOPInstanceUID;
+typedef std::string SOPClassUID;
+
 typedef std::string TransferSyntaxUID;
 typedef std::map<std::string, std::string> AetMap;
 typedef std::set<std::string> Xfers;
@@ -65,22 +76,56 @@ struct Image {
 
   TransferSyntaxUID transfer_syntax_uid_;
   
+  // STUDY LEVEL
+  PatientID patient_id_;
+  PatientName patient_name_;
   StudyUID study_uid_;
+  StudyDesc study_desc_;
+
+  // SERIES LEVEL
   SeriesUID series_uid_;
-  InstanceUID instance_uid_;
+  SeriesDesc series_desc_;
+
+  // IMAGE LEVEL
+  SOPInstanceUID sop_instance_uid_;
+  SOPClassUID sop_class_uid_;
 
   void* dataset_;
 
   void init(std::string source,
             TransferSyntaxUID transfer_syntax_uid,
+
+            // STUDY
+            PatientID patient_id,
+            PatientName patient_name,
             StudyUID study_uid,
+            StudyDesc study_desc,
+
+            // SERIES LEVEL
             SeriesUID series_uid,
-            InstanceUID instance_uid) {
+            SeriesDesc series_desc,
+
+            // IMAGE LEVEL
+            SOPInstanceUID sop_instance_uid,
+            SOPClassUID sop_class_uid) {
     source_ = source;
     transfer_syntax_uid_ = transfer_syntax_uid;
-    study_uid_ = study_uid;
+
+    // STUDY
+    patient_id_ = patient_id;
+    patient_name_ = patient_name;
+    study_uid_ =  study_uid;
+    study_desc_ = study_desc;
+
+    // SERIES LEVEL
     series_uid_ = series_uid;
-    instance_uid_ = instance_uid;
+    series_desc_ = series_desc;
+
+    // IMAGE LEVEL
+    std::cout << "2 SOP Instance UID: " << sop_instance_uid << std::endl;
+    sop_instance_uid_ = sop_instance_uid;
+    std::cout << "3 SOP Instance UID: " << sop_instance_uid_ << std::endl;
+    sop_class_uid_ = sop_class_uid;
   }
 };
 
