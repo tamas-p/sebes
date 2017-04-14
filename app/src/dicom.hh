@@ -136,7 +136,7 @@ class Dicom {
 
 public:
 
-  enum QueryLevel {SERIES, STUDY};
+  enum QueryLevel {IMAGE, SERIES, STUDY};
   
   const ImageStore* imagestore_;
   const AetMap* rhosts_;

@@ -6,6 +6,7 @@
 // Standard
 #include <stdio.h>
 #include <dirent.h>
+#include <openssl/md5.h>
 
 // Logging
 #include <easylogging++.h>
@@ -46,6 +47,13 @@ void list_dir(const char* path, std::vector<std::string>* found) {
 
 ImageStore::ImageStore(const std::string& path, const Xfers& xfers) : rootdir_(path) {
   fill_study_map(path, xfers);
+}
+
+//------------------------------------------------------------------------------
+
+void calculate_checksum(void* buffer, size_t length) {
+  MD5_CTX mdContext;
+  MD5_Init(&mdContext);
 }
 
 //------------------------------------------------------------------------------

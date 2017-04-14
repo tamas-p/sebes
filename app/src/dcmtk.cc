@@ -480,6 +480,11 @@ static void move_provider_callback(/* in */
                                    T_DIMSE_C_MoveRSP* response,
                                    DcmDataset** stDetail,
                                    DcmDataset** responseIdentifiers) {
+  if (cancelled) {
+    response->DimseStatus = STATUS_MOVE_Cancel_SubOperationsTerminatedDueToCancelIndication;
+    return;
+  }
+
   CallbackData_SCP* callback_data = static_cast<CallbackData_SCP*>(callbackData);
 
   if (callback_data->store_assoc_ == 0) {
@@ -495,29 +500,35 @@ static void move_provider_callback(/* in */
     requestIdentifiers->print(std::cout);
     std::cout << "----------------------------------------------------------" << std::endl;
 
-    OFString study_uid;
-    requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
-    OFString series_uid;
-    requestIdentifiers->findAndGetOFString(DCM_SeriesInstanceUID, series_uid);
-
     callback_data->response_ = new ImageStore::ImageMap();
 
-    try {
-      const ImageStore::ImageMap& series_image_map =
-        callback_data->imagestore_->series_map_.at(series_uid.c_str());
+    OFString qrlevel;
+    requestIdentifiers->findAndGetOFString(DCM_QueryRetrieveLevel, qrlevel);
 
-      callback_data->response_->insert(series_image_map.cbegin(), series_image_map.cend());
-    }
-    catch (const std::out_of_range& ex) {
-    }
+    if (qrlevel.compare("STUDY") == 0) {
+      OFString study_uid;
+      requestIdentifiers->findAndGetOFString(DCM_StudyInstanceUID, study_uid);
 
-    try {
-      const ImageStore::ImageMap& study_image_map =
-        callback_data->imagestore_->study_map_.at(study_uid.c_str());
+      auto imagemap_iterator = callback_data->imagestore_->study_map_.find(study_uid.c_str());
+      callback_data->response_->insert(imagemap_iterator->second.cbegin(),
+                                       imagemap_iterator->second.cend());
+    } else if (qrlevel.compare("SERIES") == 0) {
+      OFString series_uid;
+      requestIdentifiers->findAndGetOFString(DCM_SeriesInstanceUID, series_uid);
 
-      callback_data->response_->insert(study_image_map.cbegin(), study_image_map.cend());
-    }
-    catch (const std::out_of_range& ex) {
+      auto imagemap_iterator = callback_data->imagestore_->series_map_.find(series_uid.c_str());
+      if (imagemap_iterator != callback_data->imagestore_->series_map_.end()) {
+        callback_data->response_->insert(imagemap_iterator->second.cbegin(),
+                                         imagemap_iterator->second.cend());
+      }
+    } else if (qrlevel.compare("IMAGE") == 0) {
+      OFString instance_uid;
+      requestIdentifiers->findAndGetOFString(DCM_SOPInstanceUID, instance_uid);
+
+      auto image_iterator = callback_data->imagestore_->image_map_.find(instance_uid.c_str());
+      if (image_iterator != callback_data->imagestore_->image_map_.end()) {
+        callback_data->response_->insert(*image_iterator);
+      }
     }
 
     callback_data->image_it_ = callback_data->response_->cbegin();
@@ -640,6 +651,12 @@ void find_provider_callback(/* in */
                             DcmDataset **statusDetail) {
 
   VLOG(1) << "Find callback is called.";
+
+  if (cancelled) {
+    response->DimseStatus = STATUS_FIND_Cancel_MatchingTerminatedDueToCancelRequest;
+    return;
+  }
+  
   CallbackData_SCP* callback_data = static_cast<CallbackData_SCP*>(callbackData);
     
   OFString qrlevel;
@@ -1363,10 +1380,17 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   if (level == Dicom::SERIES) {
     qrlevel_element->putString("SERIES");
     uid_element = newDicomElement(DCM_SeriesInstanceUID);
-  } else {
+  } else if (level == Dicom::STUDY) {
     qrlevel_element->putString("STUDY");
     uid_element = newDicomElement(DCM_StudyInstanceUID);
+  } else if (level == Dicom::IMAGE) {
+    qrlevel_element->putString("IMAGE");
+    uid_element = newDicomElement(DCM_SOPInstanceUID);
+  } else {
+    LOG(ERROR) << "Not supported level: " << level;
+    return;
   }
+
   uid_element->putString(dicom_uid.c_str());
   DcmDataset dset;
   dset.insert(qrlevel_element, OFTrue);

@@ -18,7 +18,7 @@ void print_usage_and_exit(const std::string& name) {
             << " --host=aet@host:port"
             << " --rhost=raet@rhost:rport"
             << " --xfer=transfer_syntax_uid"
-            << " --series=series_uid|--study=study_uid"
+            << " --instance=sop_instance_uid|--series=series_uid|--study=study_uid"
             << " [--tcpbuffer=length]"
             << " [--norsp]" << std::endl;
 
@@ -37,6 +37,7 @@ struct Arguments {
 
   std::string xfer_;
 
+  std::string instance_uid_;
   std::string series_uid_;
   std::string study_uid_;
   std::string tcp_buffer_length_;
@@ -60,6 +61,7 @@ void cmdparse(int argc,
       {"host", required_argument, 0, 'h'},
       {"rhost", required_argument, 0, 'r'},
       {"xfer", required_argument, 0, 'x'},
+      {"instance", required_argument, 0, 'i'},
       {"series", required_argument, 0, 's'},
       {"study", required_argument, 0, 'e'},
       {"tcpbuffer", required_argument, 0, 'b'},
@@ -96,6 +98,10 @@ void cmdparse(int argc,
       arguments->xfer_ = optarg;
       break;
 
+    case 'i':
+      arguments->instance_uid_ = optarg;
+      break;
+
     case 's':
       arguments->series_uid_ = optarg;
       break;
@@ -130,6 +136,11 @@ void cmdparse(int argc,
     }
   }
 
+  int num_uids = 0;
+  if (!arguments->instance_uid_.empty()) num_uids++;
+  if (!arguments->series_uid_.empty()) num_uids++;
+  if (!arguments->study_uid_.empty()) num_uids++;
+    
   // Check that everything we need is set.
   if (arguments->aet_.empty() ||
       arguments->host_.empty() ||
@@ -137,10 +148,8 @@ void cmdparse(int argc,
       arguments->raet_.empty() ||
       arguments->rhost_.empty() ||
       arguments->xfer_.empty() ||
-      (arguments->series_uid_.empty() && arguments->study_uid_.empty()) ||
-      (!arguments->series_uid_.empty() && !arguments->study_uid_.empty())) {
+      num_uids != 1)
     print_usage_and_exit(name);
-  }
 }
 
 //------------------------------------------------------------------------------
@@ -168,10 +177,13 @@ int main(int argc, char *argv[]) {
 
   Dicom::QueryLevel query_level;
   std::string dicom_uid;
-  if (!arguments.series_uid_.empty()) {
+  if (!arguments.instance_uid_.empty()) {
+    query_level = Dicom::IMAGE;
+    dicom_uid = arguments.instance_uid_;
+  } else if (!arguments.series_uid_.empty()) {
     query_level = Dicom::SERIES;
     dicom_uid = arguments.series_uid_;
-  } else {
+  } else if (!arguments.study_uid_.empty()) {
     query_level = Dicom::STUDY;
     dicom_uid = arguments.study_uid_;
   }
