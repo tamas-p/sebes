@@ -13,9 +13,11 @@
 #include <dcmtk/dcmnet/diutil.h>
 #include <dcmtk/dcmdata/dcdeftag.h>
 #include "dcmtk/dcmjpls/djencode.h"   /* for class DJLSEncoderRegistration */
+#include "dcmtk/dcmjpls/djdecode.h"   /* for class DJLSDecoderRegistration */
 #include "dcmtk/dcmjpls/djrparam.h"   /* for class DJLSRepresentationParameter */
 
 #include "dcmtk/dcmjpeg/djencode.h"   /* for dcmjpeg encoders */
+#include "dcmtk/dcmjpeg/djdecode.h"   /* for dcmjpeg decoders */
 
 #include "dcmtk/dcmdata/dcrledrg.h"  /* for RLE decoder */
 #include "dcmtk/dcmdata/dcrleerg.h"  /* for RLE encoder */
@@ -26,6 +28,8 @@
  
 #include "fmjpeg2k/djdecode.h" /* for J2K decoder */
 #include "fmjpeg2k/djencode.h" /* for J2K encoder */
+
+#include <openssl/sha.h>
 
 #include "imagestore.hh"
 
@@ -137,6 +141,37 @@ void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xf
 
 //------------------------------------------------------------------------------
 
+void convert_buf_to_hex(const unsigned char* data, const size_t length) {
+  const size_t kSize = 2 * length + 1;
+  char obuffer[kSize];
+  obuffer[kSize - 1] = 0;
+
+  for (size_t j = 0; j < length; j++)
+    snprintf(&obuffer[2*j], kSize, "%02X", data[j]);
+
+  LOG(INFO) << "MD> " << static_cast<char*>(obuffer);
+}
+
+void calculate_checksum(const unsigned char* buffer, size_t length) {
+  unsigned char md[SHA_DIGEST_LENGTH];
+  SHA1(buffer, length, md);
+
+  convert_buf_to_hex(md, SHA_DIGEST_LENGTH);
+}
+
+void log_dataset_checksum(DcmDataset* dataset) {
+  LOG(INFO) << "Dataset=" << dataset;
+  const Uint8* pixelData = 0;
+  unsigned long num_elem = 0;
+  CHK(dataset->findAndGetUint8Array(DCM_PixelData, pixelData, &num_elem));
+  // LOG(INFO) << "PixelData=" << pixelData;
+  LOG(INFO) << "num_elem=" << num_elem;
+
+  calculate_checksum(pixelData, num_elem);
+}
+
+//------------------------------------------------------------------------------
+
 void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xfers& xfers) {
   DcmFileFormat* fileformat = new DcmFileFormat();
   CHK(fileformat->loadFile(path.c_str()));
@@ -144,6 +179,8 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
 
   DcmMetaInfo* metainfo = fileformat->getMetaInfo();
   DcmDataset* dataset = fileformat->getAndRemoveDataset();
+
+  log_dataset_checksum(dataset);
 
   // STUDY LEVEL
   OFString patient_id;
@@ -161,20 +198,16 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
 
   OFString transfer_syntax_uid;
   // We must have all three to consider it into the datastructure
-  if (// STUDY LEVEL
-      dataset->findAndGetOFString(DCM_PatientID, patient_id).bad() ||
-      dataset->findAndGetOFString(DCM_PatientName, patient_name).bad() ||
-      dataset->findAndGetOFString(DCM_StudyInstanceUID, study_uid).bad() ||
-      // SERIES LEVEL
+  if (dataset->findAndGetOFString(DCM_StudyInstanceUID, study_uid).bad() ||
       dataset->findAndGetOFString(DCM_SeriesInstanceUID, series_uid).bad() ||
-      // IMAGE LEVEL
       dataset->findAndGetOFString(DCM_SOPInstanceUID, sop_instance_uid).bad() ||
-
       metainfo->findAndGetOFString(DCM_TransferSyntaxUID, transfer_syntax_uid).bad()) {
     THROW_DICOM_EXCEPTION("Could not parse image.");
   }
 
   // OPTIONALS
+  dataset->findAndGetOFString(DCM_PatientID, patient_id);
+  dataset->findAndGetOFString(DCM_PatientName, patient_name);
   dataset->findAndGetOFString(DCM_StudyDescription, study_desc);
   dataset->findAndGetOFString(DCM_SeriesDescription, series_desc);
   dataset->findAndGetOFString(DCM_SOPClassUID, sop_class_uid);
@@ -188,7 +221,6 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
           << " (" <<  xferobj.getXferID() << ")";
 
   image->dataset_ = dataset;
-  std::cout << "SOP Instance UID: " << sop_instance_uid << std::endl;
   image->init(path,
               transfer_syntax_uid.c_str(),
 
@@ -212,9 +244,16 @@ void DicomDcmtk::init() {
 
 void DicomDcmtk::init_codec() {
   DJLSEncoderRegistration::registerCodecs();
+  DJLSDecoderRegistration::registerCodecs();
+
   DJEncoderRegistration::registerCodecs();
+  DJDecoderRegistration::registerCodecs();
+
   DcmRLEEncoderRegistration::registerCodecs();
+  DcmRLEDecoderRegistration::registerCodecs();
+
   FMJPEG2KEncoderRegistration::registerCodecs();
+  FMJPEG2KDecoderRegistration::registerCodecs();
 }
 
 //------------------------------------------------------------------------------
@@ -1530,8 +1569,10 @@ void processCompressed(DcmDataset* dset) {
   if (result.bad()) {
     LOG(ERROR) << "Could not reach PixelData.";
   }
-        
+
   LOG(INFO) << "Pixeldata is found.";
+
+  //LOG(INFO) << element->getVRName();
         
   DcmPixelData *dpix = NULL;
   dpix = OFstatic_cast(DcmPixelData*, element);
@@ -1544,7 +1585,7 @@ void processCompressed(DcmDataset* dset) {
   // Find the key that is needed to access the right representation of the data within DCMTK
   dpix->getOriginalRepresentationKey(xferSyntax, rep);
 
-  VLOG(1) << "Received dset length 2: " << dset->getLength(xferSyntax);
+  LOG(INFO) << "Received dset length 2: " << dset->getLength(xferSyntax);
         
   // Access original data representation and get result within pixel sequence
   DcmPixelSequence *dseq = NULL;

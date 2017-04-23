@@ -122,9 +122,7 @@ struct Image {
     series_desc_ = series_desc;
 
     // IMAGE LEVEL
-    std::cout << "2 SOP Instance UID: " << sop_instance_uid << std::endl;
     sop_instance_uid_ = sop_instance_uid;
-    std::cout << "3 SOP Instance UID: " << sop_instance_uid_ << std::endl;
     sop_class_uid_ = sop_class_uid;
   }
 };
