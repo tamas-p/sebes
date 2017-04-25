@@ -21,6 +21,8 @@
 
 #include "dcmtk/dcmdata/dcrledrg.h"  /* for RLE decoder */
 #include "dcmtk/dcmdata/dcrleerg.h"  /* for RLE encoder */
+#include "dcmtk/dcmdata/dctypes.h"   /* for DcmData.print flags */
+
 #include "dcmtk/dcmnet/dimse.h"
 
 #include "dcmtk/dcmdata/dctk.h" 
@@ -161,6 +163,23 @@ void calculate_checksum(const unsigned char* buffer, size_t length) {
 
 void log_dataset_checksum(DcmDataset* dataset) {
   LOG(INFO) << "Dataset=" << dataset;
+  dataset->print(std::cout,
+                 // DCMTypes::PF_showTreeStructure |
+                 DCMTypes::PF_useANSIEscapeCodes |
+                 DCMTypes::PF_shortenLongTagValues);
+
+  DcmStack stack;
+  size_t i = 1;
+  OFCondition status = dataset->nextObject(stack, OFTrue);
+  while (status.good()) {
+    DcmObject* dobject = stack.top();
+    LOG(INFO) << i++ << ". " << dobject << " Type: " << typeid(*dobject).name();
+    // dobject->print(std::cout);
+
+    // Next element.
+    status = dataset->nextObject(stack, OFTrue);
+  }
+
   const Uint8* pixelData = 0;
   unsigned long num_elem = 0;
   CHK(dataset->findAndGetUint8Array(DCM_PixelData, pixelData, &num_elem));
