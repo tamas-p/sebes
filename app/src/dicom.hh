@@ -186,7 +186,9 @@ public:
   virtual void movescu_execute(const std::string& raet,
                                const std::string& raddress,
                                QueryLevel level,
-                               const std::string& dicom_uid,
+                               const std::string& study_uid,
+                               const std::string& series_uid,
+                               const std::string& instance_uid,
                                const std::string& xfer) = 0;
 
   virtual void cleanup() = 0;

@@ -1381,12 +1381,14 @@ void start_storescp(pthread_t* thread,
 
 void DicomDcmtk::movescu_execute(const std::string& raet,
                                  const std::string& raddress,
-                                 Dicom::QueryLevel level,
-                                 const std::string& dicom_uid,
+                                 QueryLevel level,
+                                 const std::string& study_uid,
+                                 const std::string& series_uid,
+                                 const std::string& instance_uid,
                                  const std::string& xfer) {
   TIMED_FUNC(timerObj);
 
-  struct timespec tstart={0,0}, tend={0,0};
+  struct timespec tstart = {0, 0}, tend = {0, 0};
   clock_gettime(CLOCK_MONOTONIC, &tstart);
 
   T_ASC_Parameters* params;
@@ -1439,28 +1441,27 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   
   //-------------------------------------
   DcmElement* qrlevel_element = newDicomElement(DCM_QueryRetrieveLevel);
-  DcmElement* uid_element;
-  if (level == Dicom::SERIES) {
-    qrlevel_element->putString("SERIES");
-    uid_element = newDicomElement(DCM_SeriesInstanceUID);
-  } else if (level == Dicom::STUDY) {
-    qrlevel_element->putString("STUDY");
-    uid_element = newDicomElement(DCM_StudyInstanceUID);
-  } else if (level == Dicom::IMAGE) {
-    qrlevel_element->putString("IMAGE");
-    uid_element = newDicomElement(DCM_SOPInstanceUID);
-  } else {
+  switch (level) {
+  case Dicom::SERIES:
+    qrlevel_element->putString("SERIES"); break;
+  case Dicom::STUDY:
+    qrlevel_element->putString("STUDY"); break;
+  case Dicom::IMAGE:
+    qrlevel_element->putString("IMAGE"); break;
+  default:
     LOG(ERROR) << "Not supported level: " << level;
     return;
   }
 
-  uid_element->putString(dicom_uid.c_str());
   DcmDataset dset;
   dset.insert(qrlevel_element, OFTrue);
-  dset.insert(uid_element, OFTrue);
+  dset.insert(create_element(study_uid, DCM_StudyInstanceUID), OFTrue);
+  dset.insert(create_element(series_uid, DCM_SeriesInstanceUID), OFTrue);
+  dset.insert(create_element(instance_uid, DCM_SOPInstanceUID), OFTrue);
+
   //--------------------------------------
 
-  PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after dset creation");
+  // PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after dset creation");
 
   T_DIMSE_C_MoveRQ req;
   req.MessageID = assoc->nextMsgID++;
@@ -1501,7 +1502,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
                      &statusDetail,
                      &rspIds,
                      OFTrue));
-  PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after DIMSE_moveUser");
+  // PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after DIMSE_moveUser");
   LOG(INFO) << "after moveUser";
 
   CHK(ASC_releaseAssociation(assoc));

@@ -18,7 +18,8 @@ void print_usage_and_exit(const std::string& name) {
             << " --host=aet@host:port"
             << " --rhost=raet@rhost:rport"
             << " --xfer=transfer_syntax_uid"
-            << " --instance=sop_instance_uid|--series=series_uid|--study=study_uid"
+            << " --level=study|series|image"
+            << " [--study=study_uid] [--series=series_uid] [--instance=sop_instance_uid]"
             << " [--tcpbuffer=length]"
             << " [--norsp]" << std::endl;
 
@@ -37,6 +38,7 @@ struct Arguments {
 
   std::string xfer_;
 
+  std::string level_;
   std::string instance_uid_;
   std::string series_uid_;
   std::string study_uid_;
@@ -55,12 +57,13 @@ void cmdparse(int argc,
               Arguments* arguments) {
   std::string name = basename(argv[0]);
   while (1) {
-    const char* options = "v:h:r:x:s:e:n";
+    const char* options = "v:h:r:x:l:i:s:e:n";
     static struct option long_options[] = {
       {"v", optional_argument, 0, 'v'},
       {"host", required_argument, 0, 'h'},
       {"rhost", required_argument, 0, 'r'},
       {"xfer", required_argument, 0, 'x'},
+      {"level", required_argument, 0, 'l'},
       {"instance", required_argument, 0, 'i'},
       {"series", required_argument, 0, 's'},
       {"study", required_argument, 0, 'e'},
@@ -98,6 +101,10 @@ void cmdparse(int argc,
       arguments->xfer_ = optarg;
       break;
 
+    case 'l':
+      arguments->level_ = optarg;
+      break;
+
     case 'i':
       arguments->instance_uid_ = optarg;
       break;
@@ -119,7 +126,6 @@ void cmdparse(int argc,
       break;
 
     case 'v':
-      std::cout << "HELLO" << std::endl;
       break;
 
     case ':':
@@ -136,11 +142,11 @@ void cmdparse(int argc,
     }
   }
 
-  int num_uids = 0;
-  if (!arguments->instance_uid_.empty()) num_uids++;
-  if (!arguments->series_uid_.empty()) num_uids++;
-  if (!arguments->study_uid_.empty()) num_uids++;
-    
+  // int num_uids = 0;
+  // if (!arguments->instance_uid_.empty()) num_uids++;
+  // if (!arguments->series_uid_.empty()) num_uids++;
+  // if (!arguments->study_uid_.empty()) num_uids++;
+
   // Check that everything we need is set.
   if (arguments->aet_.empty() ||
       arguments->host_.empty() ||
@@ -148,7 +154,7 @@ void cmdparse(int argc,
       arguments->raet_.empty() ||
       arguments->rhost_.empty() ||
       arguments->xfer_.empty() ||
-      num_uids != 1)
+      arguments->level_.empty())
     print_usage_and_exit(name);
 }
 
@@ -162,11 +168,23 @@ int main(int argc, char *argv[]) {
   el::Loggers::reconfigureAllLoggers(conf);
   el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format,
                                      "%datetime %level %file:%line : %msg"); */
-  
+
   DicomDcmtk::init_codec();
 
   Arguments arguments;
   cmdparse(argc, argv, &arguments);
+
+  Dicom::QueryLevel query_level = Dicom::STUDY;
+  if (arguments.level_.compare("image") == 0) {
+    query_level = Dicom::IMAGE;
+  } else if (arguments.level_.compare("series") == 0) {
+    query_level = Dicom::SERIES;
+  } else if (arguments.level_.compare("study") == 0) {
+    query_level = Dicom::STUDY;
+  } else {
+    print_usage_and_exit(basename(argv[0]));
+  }
+
   set_tcp_buffer_length(arguments.tcp_buffer_length_);
   LOG(INFO) << basename(argv[0]) << " has been started...";
 
@@ -175,23 +193,12 @@ int main(int argc, char *argv[]) {
                                 std::stoi(arguments.port_),
                                 arguments.need_response_);
 
-  Dicom::QueryLevel query_level;
-  std::string dicom_uid;
-  if (!arguments.instance_uid_.empty()) {
-    query_level = Dicom::IMAGE;
-    dicom_uid = arguments.instance_uid_;
-  } else if (!arguments.series_uid_.empty()) {
-    query_level = Dicom::SERIES;
-    dicom_uid = arguments.series_uid_;
-  } else if (!arguments.study_uid_.empty()) {
-    query_level = Dicom::STUDY;
-    dicom_uid = arguments.study_uid_;
-  }
-
   dicom->movescu_execute(arguments.raet_,
                          arguments.rhost_,
                          query_level,
-                         dicom_uid,
+                         arguments.study_uid_,
+                         arguments.series_uid_,
+                         arguments.instance_uid_,
                          arguments.xfer_);
 
   return 0;
