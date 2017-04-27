@@ -100,7 +100,7 @@ DicomDcmtk::DicomDcmtk(int port,
     network_(0),
     assoc_(0) {
 
-  LOG(INFO) << "Initialize network on port " << dicom_port_;
+  LOG(INFO) << "Initialize network as NET_ACCEPTORREQUESTOR on port " << dicom_port_;
   //  DUL_requestForkOnTransportConnectionReceipt(0, 0);
   CHK(ASC_initializeNetwork(NET_ACCEPTORREQUESTOR, dicom_port_, timeout_, &network_));
 }
@@ -114,7 +114,7 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
     network_(0),
     assoc_(0) {
 
-  LOG(INFO) << "Initialize network on port " << dicom_port_;
+  LOG(INFO) << "Initialize network as NET_REQUESTOR";
   //  DUL_requestForkOnTransportConnectionReceipt(0, 0);
   CHK(ASC_initializeNetwork(NET_REQUESTOR, 0, timeout_, &network_));
 }
@@ -199,7 +199,7 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
   DcmMetaInfo* metainfo = fileformat->getMetaInfo();
   DcmDataset* dataset = fileformat->getAndRemoveDataset();
 
-  log_dataset_checksum(dataset);
+  // log_dataset_checksum(dataset);
 
   // STUDY LEVEL
   OFString patient_id;
@@ -391,6 +391,7 @@ struct CallbackData_SCU {
   std::string xfer_;
   int dicom_port_;
   bool need_response_;
+  T_ASC_Network* network;
 };
 
 //------------------------------------------------------------------------------
@@ -1173,23 +1174,14 @@ static void storescp_provider_callback(void* callback_data,
 
 //------------------------------------------------------------------------------
 
-void* storescp_thread(void* pass) {
-
-  struct timespec tstart={0,0}, tend={0,0};
-  clock_gettime(CLOCK_MONOTONIC, &tstart);
-  
-  // T_ASC_Association* subop_association;
-  T_ASC_Network* network;
-  int timeout = INT_MAX;
-  CallbackData_SCU* cbd = (CallbackData_SCU*)pass;
-  CHK(ASC_initializeNetwork(NET_ACCEPTOR, cbd->dicom_port_, timeout, &network));
-
+T_ASC_Association* receive_association(CallbackData_SCU* cbd) {
   LOG(INFO) << "Waiting for association...";
-  CHK(ASC_associationWaiting(network, timeout));
+
+  CHK(ASC_associationWaiting(cbd->network, INT_MAX));
 
   T_ASC_Association* assoc;
   LOG(INFO) << "accept store association started";
-  CHK(ASC_receiveAssociation(network, &assoc, ASC_DEFAULTMAXPDU));
+  CHK(ASC_receiveAssociation(cbd->network, &assoc, ASC_DEFAULTMAXPDU));
   OFString str;
   LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
 
@@ -1208,7 +1200,7 @@ void* storescp_thread(void* pass) {
                                                       ts_size));
 
   LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
-  
+
   OFCondition cond_aa = ASC_acknowledgeAssociation(assoc);
 
   if (cond_aa.bad()) {
@@ -1216,6 +1208,89 @@ void* storescp_thread(void* pass) {
     ASC_destroyAssociation(&assoc);
   }
   LOG(INFO) << "store association accepted. Starting receiving images...";
+  return assoc;
+}
+
+void log_received_image(T_DIMSE_C_StoreRQ* req) {
+     char imageFileName[PATH_MAX+1];
+      snprintf(imageFileName,
+               PATH_MAX,
+               "%s.%s",
+               dcmSOPClassUIDToModality(req->AffectedSOPClassUID),
+               req->AffectedSOPInstanceUID);
+      VLOG(1) << "received " << imageFileName;
+      VLOG(1) << "before storeProvider " << imageFileName;
+}
+
+void send_response(T_ASC_Association* assoc, T_DIMSE_C_StoreRQ* req, T_ASC_PresentationContextID presID) {
+  T_DIMSE_C_StoreRSP response;
+  bzero(&response, sizeof(response));
+  response.DimseStatus = STATUS_Success;  /* assume */
+  response.MessageIDBeingRespondedTo = req->MessageID;
+  response.DataSetType = DIMSE_DATASET_NULL;  /* always for C-STORE-RSP */
+  strncpy(response.AffectedSOPClassUID, req->AffectedSOPClassUID, DIC_UI_LEN);
+  strncpy(response.AffectedSOPInstanceUID, req->AffectedSOPInstanceUID, DIC_UI_LEN);
+  response.opts = (O_STORE_AFFECTEDSOPCLASSUID | O_STORE_AFFECTEDSOPINSTANCEUID);
+  if (req->opts & O_STORE_RQ_BLANK_PADDING) response.opts |= O_STORE_RSP_BLANK_PADDING;
+  if (dcmPeerRequiresExactUIDCopy.get()) response.opts |= O_STORE_PEER_REQUIRES_EXACT_UID_COPY;
+
+  DcmDataset* statusDetail = NULL;
+  DIMSE_sendStoreResponse(assoc,
+                          presID,
+                          req,
+                          &response,
+                          statusDetail);
+}
+
+void log_received_image(DcmDataset* dset) {
+  E_TransferSyntax xfer = dset->getOriginalXfer();
+  VLOG(1) << "Original TransferSyntax=" << xfer;
+  OFString patientName;
+  CHK(dset->findAndGetOFString(DCM_PatientName, patientName));
+  VLOG(1) << "PN=" << patientName;
+  OFString instance_uid;
+  CHK(dset->findAndGetOFString(DCM_SOPInstanceUID, instance_uid));
+  VLOG(1) << "SOPInstanceUID=" << instance_uid;
+  OFString instance_number;
+  CHK(dset->findAndGetOFString(DCM_InstanceNumber, instance_number));
+  VLOG(1) << "InstanceNumber=" << instance_number;
+}
+
+bool cleanup_assoc_needed(OFCondition cond_rc, T_ASC_Association* assoc) {
+  /* clean up on association termination */
+
+  OFCondition cond_release;
+  if (cond_rc == DUL_PEERREQUESTEDRELEASE) {
+    cond_release = ASC_acknowledgeRelease(assoc);
+    LOG(INFO) << "DUL_PEERREQUESTEDRELEASE: "
+              << "Releasing, dropping and destroying storescp association: "
+              << cond_release.text();
+    ASC_dropSCPAssociation(assoc);
+    ASC_destroyAssociation(&assoc);
+    return true;
+  } else {
+    if (cond_rc == DUL_PEERABORTEDASSOCIATION) {
+      LOG(INFO) << "DUL_PEERABORTEDASSOCIATION: Nothing?.";
+      // do nothing?
+      return true;
+    } else {
+      if (cond_rc != EC_Normal) {
+        OFString temp_str;
+        VLOG(1) << "DIMSE failure (aborting sub-association): "
+                << DimseCondition::dump(temp_str, cond_rc);
+        /* some kind of error so abort the association */
+        cond_release = ASC_abortAssociation(assoc);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+void serve_storescu(T_ASC_Association* assoc, CallbackData_SCU* cbd) {
+  struct timespec tstart = {0, 0}, tend = {0, 0};
+  clock_gettime(CLOCK_MONOTONIC, &tstart);
 
   size_t num_images_received = 0;
   size_t num_bytes_received = 0;
@@ -1234,28 +1309,9 @@ void* storescp_thread(void* pass) {
     if (cond_rc == EC_Normal && msg.CommandField == DIMSE_C_STORE_RQ) {
       T_DIMSE_Message* msg1 = &msg;
       T_DIMSE_C_StoreRQ* req = &msg1->msg.CStoreRQ;
+      log_received_image(req);
 
-      char imageFileName[PATH_MAX+1];
-      snprintf(imageFileName,
-               PATH_MAX,
-               "%s.%s",
-               dcmSOPClassUIDToModality(req->AffectedSOPClassUID),
-               req->AffectedSOPInstanceUID);
-      VLOG(1) << "received " << imageFileName;
-      VLOG(1) << "before storeProvider " << imageFileName;
-
-      DcmDataset* dset = 0;  // = dcmff.getDataset();
-      /*
-        cond = DIMSE_storeProvider(*assoc,
-        presID,
-        req,
-        0,
-        OFTrue,
-        &dset,
-        0,
-        0,
-        DIMSE_BLOCKING,
-        0);*/
+      DcmDataset* dset = 0;
       {
         if (VLOG_IS_ON(1)) TIMED_SCOPE(t2, "receiveDataSetInMemory");
         CHK(DIMSE_receiveDataSetInMemory(assoc,
@@ -1269,77 +1325,14 @@ void* storescp_thread(void* pass) {
 
         VLOG(1) << "Received dset length: " << dset->getLength(dset->getOriginalXfer());
         num_bytes_received += dset->getLength(dset->getOriginalXfer());
+        log_received_image(dset);
       }
 
-      T_DIMSE_C_StoreRSP response;
-      bzero(&response, sizeof(response));
-      response.DimseStatus = STATUS_Success;  /* assume */
-      response.MessageIDBeingRespondedTo = req->MessageID;
-      response.DataSetType = DIMSE_DATASET_NULL;  /* always for C-STORE-RSP */
-      strncpy(response.AffectedSOPClassUID, req->AffectedSOPClassUID, DIC_UI_LEN);
-      strncpy(response.AffectedSOPInstanceUID, req->AffectedSOPInstanceUID, DIC_UI_LEN);
-      response.opts = (O_STORE_AFFECTEDSOPCLASSUID | O_STORE_AFFECTEDSOPINSTANCEUID);
-      if (req->opts & O_STORE_RQ_BLANK_PADDING) response.opts |= O_STORE_RSP_BLANK_PADDING;
-      if (dcmPeerRequiresExactUIDCopy.get()) response.opts |= O_STORE_PEER_REQUIRES_EXACT_UID_COPY;
-
-      if (cbd->need_response_) {
-        DcmDataset* statusDetail = NULL;
-        // if (VLOG_IS_ON(1)) PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "before sendStoreResponse");
-        DIMSE_sendStoreResponse(assoc,
-                                presID,
-                                req,
-                                &response,
-                                statusDetail);
-        // if (VLOG_IS_ON(1)) PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after sendStoreResponse");
-      }
-
-      VLOG(1) << "after storeProvider " << imageFileName;
-      VLOG(1) << "cond= " << cond_rc.text();
-
-      E_TransferSyntax xfer = dset->getOriginalXfer();
-      VLOG(1) << "Original TransferSyntax=" << xfer;
-      OFString patientName;
-      CHK(dset->findAndGetOFString(DCM_PatientName, patientName));
-      VLOG(1) << "PN=" << patientName;
-      OFString instance_uid;
-      CHK(dset->findAndGetOFString(DCM_SOPInstanceUID, instance_uid));
-      VLOG(1) << "SOPInstanceUID=" << instance_uid;
-      OFString instance_number;
-      CHK(dset->findAndGetOFString(DCM_InstanceNumber, instance_number));
-      VLOG(1) << "InstanceNumber=" << instance_number;
-
-      if (instance_number.compare("863") == 0) {
-        // show_viewer(dset);
-      }
+      if (cbd->need_response_)
+        send_response(assoc, req, presID);
     }
 
-    /* clean up on association termination */
-
-    OFCondition cond_release;
-    if (cond_rc == DUL_PEERREQUESTEDRELEASE) {
-      cond_release = ASC_acknowledgeRelease(assoc);
-      LOG(INFO) << "DUL_PEERREQUESTEDRELEASE: "
-                << "Releasing, dropping and destroying storescp association: "
-                << cond_release.text();
-      ASC_dropSCPAssociation(assoc);
-      ASC_destroyAssociation(&assoc);
-      break;
-    } else {
-      if (cond_rc == DUL_PEERABORTEDASSOCIATION) {
-        LOG(INFO) << "DUL_PEERABORTEDASSOCIATION: Nothing?.";
-        // do nothing?
-        break;
-      } else {
-        if (cond_rc != EC_Normal) {
-          OFString temp_str;
-          VLOG(1) << "DIMSE failure (aborting sub-association): "
-                  << DimseCondition::dump(temp_str, cond_rc);
-          /* some kind of error so abort the association */
-          cond_release = ASC_abortAssociation(assoc);
-          break;
-        }
-      }
-    }
+    if (cleanup_assoc_needed(cond_rc, assoc)) break;
   }
 
   LOG(INFO) << "Number of images received: " << num_images_received;
@@ -1347,15 +1340,24 @@ void* storescp_thread(void* pass) {
 
   clock_gettime(CLOCK_MONOTONIC, &tend);
   double cstore_time =
-    ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - 
-    ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec);
+    (static_cast<double>(tend.tv_sec) + 1.0e-9 * tend.tv_nsec) -
+    (static_cast<double>(tstart.tv_sec) + 1.0e-9 * tstart.tv_nsec);
 
   LOG(INFO) << "store_scp DONE in " << cstore_time
             << " s; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1.0e+6
             << " Mbit/s";
-  
-  // cleanup_f(assoc);
+
   pthread_exit(NULL);
+}
+
+void* storescp_thread(void* pass) {
+  CallbackData_SCU* cbd = reinterpret_cast<CallbackData_SCU*>(pass);
+
+  while (true) {  // Infinite loop - when C-MOVE finishes it will exit program
+    T_ASC_Association* assoc = receive_association(cbd);
+    if (assoc)
+      serve_storescu(assoc, cbd);
+  }
 }
 
 void start_storescp(pthread_t* thread,
@@ -1364,7 +1366,9 @@ void start_storescp(pthread_t* thread,
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-  // storescp_thread(callback_data);
+  T_ASC_Network* network = 0;
+  CHK(ASC_initializeNetwork(NET_ACCEPTOR, callback_data->dicom_port_, INT_MAX, &network));
+  callback_data->network = network;
 
   int rc = pthread_create(thread, &attr, storescp_thread, callback_data);
   if (rc != 0)
@@ -1373,7 +1377,8 @@ void start_storescp(pthread_t* thread,
   pthread_attr_destroy(&attr);
 }
 
-//------------------------------------------------------------------------------                                 
+//------------------------------------------------------------------------------
+
 void DicomDcmtk::movescu_execute(const std::string& raet,
                                  const std::string& raddress,
                                  Dicom::QueryLevel level,
@@ -1477,7 +1482,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
   pthread_t thread;
   start_storescp(&thread, &callback_data);
-    
+
   T_DIMSE_C_MoveRSP rsp;
   CHK(DIMSE_moveUser(  // in
                      assoc,
@@ -1506,7 +1511,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
     ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
     ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
 
-  LOG(INFO) << "movescu DONE in " << cmove_time << " ms";
+  LOG(INFO) << "movescu DONE in " << cmove_time << " s";
 
   void* status;
   pthread_join(thread, &status);
