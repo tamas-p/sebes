@@ -1183,13 +1183,13 @@ T_ASC_Association* receive_association(CallbackData_SCU* cbd) {
   LOG(INFO) << "accept store association started";
   CHK(ASC_receiveAssociation(cbd->network, &assoc, ASC_DEFAULTMAXPDU));
   OFString str;
-  LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
+  VLOG(1) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
 
   const char* transfer_syntaxes[] = {cbd->xfer_.c_str()};
-
-  /*const char* transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
-                                     UID_BigEndianExplicitTransferSyntax,
-                                     UID_LittleEndianImplicitTransferSyntax};*/
+  LOG(INFO) << "XFER ====> " << cbd->xfer_.c_str();
+  // const char* transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
+  //                                    UID_BigEndianExplicitTransferSyntax,
+  //                                    UID_LittleEndianImplicitTransferSyntax};
 
   int ts_size = DIM_OF(transfer_syntaxes);
 
@@ -1199,15 +1199,18 @@ T_ASC_Association* receive_association(CallbackData_SCU* cbd) {
                                                       transfer_syntaxes,
                                                       ts_size));
 
-  LOG(INFO) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
+  VLOG(1) << ASC_dumpParameters(str, assoc->params, ASC_ASSOC_RQ);
 
   OFCondition cond_aa = ASC_acknowledgeAssociation(assoc);
 
   if (cond_aa.bad()) {
+    LOG(ERROR) << "Accepting store association failed.";
     ASC_dropAssociation(assoc);
     ASC_destroyAssociation(&assoc);
+  } else {
+    LOG(INFO) << "store association accepted. Starting receiving images...";
   }
-  LOG(INFO) << "store association accepted. Starting receiving images...";
+
   return assoc;
 }
 
@@ -1346,8 +1349,6 @@ void serve_storescu(T_ASC_Association* assoc, CallbackData_SCU* cbd) {
   LOG(INFO) << "store_scp DONE in " << cstore_time
             << " s; used bandwidth was " << num_bytes_received * 8 / cstore_time / 1.0e+6
             << " Mbit/s";
-
-  pthread_exit(NULL);
 }
 
 void* storescp_thread(void* pass) {
@@ -1514,8 +1515,8 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
 
   LOG(INFO) << "movescu DONE in " << cmove_time << " s";
 
-  void* status;
-  pthread_join(thread, &status);
+  // It's not the nicest way, but it does the job.
+  pthread_cancel(thread);
   return;
 }
 
