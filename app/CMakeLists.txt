@@ -31,7 +31,7 @@ add_definitions(${GTK3_CFLAGS_OTHER})
 #---------------------------------------------------------------
 
 #add_definitions(-Wall)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++0x -ggdb -DELPP_THREADSAFE -DELPP_STACKTRACE_ON_CRASH -DELPP_NO_DEFAULT_LOG_FILE")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++0x -ggdb -DELPP_THREAD_SAFE -DELPP_STACKTRACE_ON_CRASH -DELPP_NO_DEFAULT_LOG_FILE")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 
 set(tools_PREFIX "${CMAKE_SOURCE_DIR}/../tools/install")

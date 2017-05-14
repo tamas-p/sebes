@@ -498,6 +498,8 @@ void storescu_store_single(T_ASC_Association* assoc, const Image* image, bool ne
   request.DataSetType = DIMSE_DATASET_PRESENT;
   req.msg.CStoreRQ = request;
 
+  VLOG(1) << "Sending image...";
+
   CHK(DIMSE_sendMessageUsingMemoryData(assoc,
                                        presId,
                                        &req,
@@ -521,6 +523,7 @@ void storescu_store_single(T_ASC_Association* assoc, const Image* image, bool ne
                              &rsp,
                              &stDetail,
                              0));
+  VLOG(1) << "storescp response on image received.";
   }
 } catch (const dicom_exception& ex) {
   // FIXME: Should set counting OK / NOK
@@ -1516,7 +1519,9 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   LOG(INFO) << "movescu DONE in " << cmove_time << " s";
 
   // It's not the nicest way, but it does the job.
-  pthread_cancel(thread);
+  // pthread_cancel(thread);
+  // FIXME: Thread cancel created crash. We need to tell thread to stop.
+  sleep(1);
   return;
 }
 

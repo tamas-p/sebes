@@ -76,7 +76,7 @@ void cmdparse(int argc,
               Arguments* arguments) {
   std::string name = basename(argv[0]);
   while (1) {
-    const char* options = "v::r:d:nm";
+    const char* options = "v:h:r:d:nm";
     static struct option long_options[] = {
       {"v", optional_argument, 0, 'v'},
       {"host", required_argument, 0, 'h'},
