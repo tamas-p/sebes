@@ -181,6 +181,8 @@ int main(int argc, char *argv[]) {
     arguments.xfers_.insert(UID_LittleEndianImplicitTransferSyntax);
     arguments.xfers_.insert(UID_JPEGLSLosslessTransferSyntax);
     arguments.xfers_.insert(UID_JPEGProcess14SV1TransferSyntax);
+    // arguments.xfers_.insert(UID_JPEGProcess1TransferSyntax);
+    // arguments.xfers_.insert(UID_JPEGProcess2_4TransferSyntax);
     arguments.xfers_.insert(UID_RLELosslessTransferSyntax);
     arguments.xfers_.insert(UID_JPEG2000TransferSyntax);
     arguments.xfers_.insert(UID_JPEG2000LosslessOnlyTransferSyntax);

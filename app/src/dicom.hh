@@ -189,7 +189,8 @@ public:
                                const std::string& study_uid,
                                const std::string& series_uid,
                                const std::string& instance_uid,
-                               const std::string& xfer) = 0;
+                               const std::string& xfer,
+                               int message_id) = 0;
 
   virtual void cleanup() = 0;
 };

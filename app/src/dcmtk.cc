@@ -43,6 +43,8 @@ const char* _transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
                                     UID_LittleEndianImplicitTransferSyntax,
                                     UID_JPEGLSLosslessTransferSyntax,
                                     UID_JPEGProcess14SV1TransferSyntax,
+                                    // UID_JPEGProcess1TransferSyntax,
+                                    // UID_JPEGProcess2_4TransferSyntax,
                                     UID_RLELosslessTransferSyntax,
                                     UID_JPEG2000TransferSyntax,
                                     UID_JPEG2000LosslessOnlyTransferSyntax};
@@ -378,12 +380,20 @@ struct CallbackData_SCP {
   ImageStore::SeriesMap* series_response_;
   ImageStore::SeriesMap::const_iterator series_it_;
   ImageStore::SeriesMap::const_iterator series_it_end_;
-  
+
+  std::string aet_;
+  std::string host_;
+
+  std::string calling_aet_;
+  std::string calling_host_;
+
   std::string raet_;
   std::string rhost_;
 
   bool multi_;
   bool need_response_;
+
+  DIC_US originatorid_;
 };
 
 struct CallbackData_SCU {
@@ -420,24 +430,17 @@ OFCondition add_all_storage_presentation_contexts(T_ASC_Parameters *params) {
 
 //------------------------------------------------------------------------------
 
-void request_association_to_storescp(const std::string& raet,
-                                     const std::string& raddress,
+void request_association_to_storescp(const std::string& my_aet,
+                                     const std::string& my_address,
+                                     const std::string& remote_aet,
+                                     const std::string& remote_address,
                                      T_ASC_Network* network,
                                      T_ASC_Association** assoc) {
   T_ASC_Parameters* params;
   CHK(ASC_createAssociationParameters(&params, ASC_DEFAULTMAXPDU));
 
-  DIC_NODENAME localHostName;
-  gethostname(localHostName, sizeof(localHostName) - 1);
-
-  DIC_NODENAME dstHostNamePlusPort;
-  strncpy(dstHostNamePlusPort, raddress.c_str(), DIC_NODENAME_LEN);
-
-  CHK(ASC_setPresentationAddresses(params, localHostName, dstHostNamePlusPort));
-  CHK(ASC_setAPTitles(params,
-                      params->DULparams.callingAPTitle,
-                      raet.c_str(),
-                      NULL));
+  CHK(ASC_setPresentationAddresses(params, my_address.c_str(), remote_address.c_str()));
+  CHK(ASC_setAPTitles(params, my_aet.c_str(), remote_aet.c_str(), NULL));
 
   CHK(add_all_storage_presentation_contexts(params));
 
@@ -450,7 +453,11 @@ void request_association_to_storescp(const std::string& raet,
 
 //------------------------------------------------------------------------------
 
-void storescu_store_single(T_ASC_Association* assoc, const Image* image, bool need_response) try {
+void storescu_store_single(T_ASC_Association* assoc,
+                           const Image* image,
+                           bool need_response,
+                           const std::string& originator_aet,
+                           DIC_US originator_id) try {
   if (VLOG_IS_ON(1)) TIMED_FUNC(timerObj);
   DcmDataset* dataset = static_cast<DcmDataset*>(image->dataset_);
 
@@ -469,11 +476,11 @@ void storescu_store_single(T_ASC_Association* assoc, const Image* image, bool ne
   request.DataSetType = DIMSE_DATASET_PRESENT;
   request.Priority = DIMSE_PRIORITY_HIGH;
 
-  /*request.opts = (O_STORE_MOVEORIGINATORAETITLE | O_STORE_MOVEORIGINATORID);
-    strncpy(request.MoveOriginatorApplicationEntityTitle,
-            "SCU",
-            DIC_AE_LEN);
-    request.MoveOriginatorID = mrequest->MessageID;*/
+  request.opts = (O_STORE_MOVEORIGINATORAETITLE | O_STORE_MOVEORIGINATORID);
+  strncpy(request.MoveOriginatorApplicationEntityTitle,
+          originator_aet.c_str(),
+          DIC_AE_LEN);
+  request.MoveOriginatorID = originator_id;
 
   /*
   T_DIMSE_C_StoreRSP rsp;
@@ -552,7 +559,10 @@ static void move_provider_callback(/* in */
   if (callback_data->store_assoc_ == 0) {
     // We have not established yet the sub-association to C-STORE SCP
     // so 1st we need to do that.
-    request_association_to_storescp(callback_data->raet_,
+    // FIXME: This coould happen after we found what was requested and only offer that as presentation context
+    request_association_to_storescp(callback_data->aet_,
+                                    callback_data->host_,
+                                    callback_data->raet_,
                                     callback_data->rhost_,
                                     callback_data->network_,
                                     &callback_data->store_assoc_);
@@ -603,13 +613,17 @@ static void move_provider_callback(/* in */
       while (callback_data->image_it_ != callback_data->image_it_end_) {
         storescu_store_single(callback_data->store_assoc_,
                               callback_data->image_it_->second,
-                              callback_data->need_response_);
+                              callback_data->need_response_,
+                              callback_data->calling_aet_,
+                              callback_data->originatorid_);
         ++callback_data->image_it_;
       }
     } else {
       storescu_store_single(callback_data->store_assoc_,
                             callback_data->image_it_->second,
-                            callback_data->need_response_);
+                            callback_data->need_response_,
+                            callback_data->calling_aet_,
+                            callback_data->originatorid_);
       ++callback_data->image_it_;
     }
   }
@@ -968,10 +982,15 @@ void DicomDcmtk::movescp_execute(T_DIMSE_Message& msg, T_ASC_PresentationContext
   callback_data.move_assoc_ = assoc_;
   callback_data.store_assoc_ = 0;
   callback_data.imagestore_ = imagestore_;
+  callback_data.aet_ = aet_;
+  callback_data.host_ = dicom_host_;
+  callback_data.calling_aet_ = assoc_->params->DULparams.callingAPTitle;
+  callback_data.calling_host_ = assoc_->params->DULparams.callingPresentationAddress;
   callback_data.raet_ = request->MoveDestination;
   callback_data.rhost_ = rhost;
   callback_data.multi_ = multi_;
   callback_data.need_response_ = need_response_;
+  callback_data.originatorid_ = request->MessageID;
 
   LOG(INFO) << "before moveProvider";
   CHK(DIMSE_moveProvider(assoc_,
@@ -1036,6 +1055,8 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
                                           &msg,
                                           0);
   VLOG(1) << "after receiveCommand cond=" << cond.text();
+  VLOG(1) << "MoveOriginatorApplicationEntityTitle: " << msg.msg.CStoreRQ.MoveOriginatorApplicationEntityTitle;
+  VLOG(1) << "MoveOriginatorID: " << msg.msg.CStoreRQ.MoveOriginatorID;
 
   if (cond == EC_Normal && msg.CommandField == DIMSE_C_STORE_RQ) {
     T_DIMSE_C_StoreRQ *req;
@@ -1311,6 +1332,9 @@ void serve_storescu(T_ASC_Association* assoc, CallbackData_SCU* cbd) {
                                                &msg,
                                                0);
     VLOG(1) << "after receiveCommand cond=" << cond_rc.text();
+    VLOG(1) << "MoveOriginatorApplicationEntityTitle: " << msg.msg.CStoreRQ.MoveOriginatorApplicationEntityTitle;
+    VLOG(1) << "MoveOriginatorID: " << msg.msg.CStoreRQ.MoveOriginatorID;
+
 
     if (cond_rc == EC_Normal && msg.CommandField == DIMSE_C_STORE_RQ) {
       T_DIMSE_Message* msg1 = &msg;
@@ -1389,7 +1413,8 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
                                  const std::string& study_uid,
                                  const std::string& series_uid,
                                  const std::string& instance_uid,
-                                 const std::string& xfer) {
+                                 const std::string& xfer,
+                                 int message_id) {
   TIMED_FUNC(timerObj);
 
   struct timespec tstart = {0, 0}, tend = {0, 0};
@@ -1442,7 +1467,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   }
 
   PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after ASC_findAcceptedPresentationContextID");
-  
+
   //-------------------------------------
   DcmElement* qrlevel_element = newDicomElement(DCM_QueryRetrieveLevel);
   switch (level) {
@@ -1468,7 +1493,11 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   // PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after dset creation");
 
   T_DIMSE_C_MoveRQ req;
-  req.MessageID = assoc->nextMsgID++;
+  if (message_id > 0) {
+    req.MessageID = message_id;
+  } else {
+    req.MessageID = assoc->nextMsgID++;
+  }
   req.Priority = DIMSE_PRIORITY_MEDIUM;
   req.DataSetType = DIMSE_DATASET_PRESENT;
   strncpy(req.AffectedSOPClassUID,

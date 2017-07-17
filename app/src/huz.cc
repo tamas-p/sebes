@@ -21,7 +21,8 @@ void print_usage_and_exit(const std::string& name) {
             << " --level=study|series|image"
             << " [--study=study_uid] [--series=series_uid] [--instance=sop_instance_uid]"
             << " [--tcpbuffer=length]"
-            << " [--norsp]" << std::endl;
+            << " [--norsp]"
+            << " [--messageid=message_id]" << std::endl;
 
   exit(-1);
 }
@@ -44,9 +45,11 @@ struct Arguments {
   std::string study_uid_;
   std::string tcp_buffer_length_;
   bool need_response_;
+  DIC_US message_id_;
   Arguments()
     : tcp_buffer_length_("512000"),
-      need_response_(true)
+      need_response_(true),
+      message_id_(0)
   {}
 };
 
@@ -69,6 +72,7 @@ void cmdparse(int argc,
       {"study", required_argument, 0, 'e'},
       {"tcpbuffer", required_argument, 0, 'b'},
       {"norsp", no_argument, 0, 'n'},
+      {"messageid", optional_argument, 0, 'm'},
       {0, 0, 0, 0}
     };
 
@@ -123,6 +127,10 @@ void cmdparse(int argc,
 
     case 'n':
       arguments->need_response_ = false;
+      break;
+
+    case 'm':
+      arguments->message_id_ = atoi(optarg);
       break;
 
     case 'v':
@@ -199,7 +207,8 @@ int main(int argc, char *argv[]) {
                          arguments.study_uid_,
                          arguments.series_uid_,
                          arguments.instance_uid_,
-                         arguments.xfer_);
+                         arguments.xfer_,
+                         arguments.message_id_);
 
   return 0;
 }
