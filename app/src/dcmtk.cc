@@ -43,8 +43,8 @@ const char* _transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
                                     UID_LittleEndianImplicitTransferSyntax,
                                     UID_JPEGLSLosslessTransferSyntax,
                                     UID_JPEGProcess14SV1TransferSyntax,
-                                    // UID_JPEGProcess1TransferSyntax,
-                                    // UID_JPEGProcess2_4TransferSyntax,
+                                    UID_JPEGProcess1TransferSyntax,
+                                    UID_JPEGProcess2_4TransferSyntax,
                                     UID_RLELosslessTransferSyntax,
                                     UID_JPEG2000TransferSyntax,
                                     UID_JPEG2000LosslessOnlyTransferSyntax};
@@ -124,6 +124,7 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
 //------------------------------------------------------------------------------
 
 void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xfers) {
+
   for (auto xfer : xfers) {
     DcmXfer xferobj(xfer.c_str());
 
@@ -226,6 +227,9 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
     THROW_DICOM_EXCEPTION("Could not parse image.");
   }
 
+  LOG(INFO) << "-----------------------------------------------------------------------";
+  LOG(INFO) << "[" << study_uid << "][" << series_uid << "][" << sop_instance_uid << "]";
+
   // OPTIONALS
   dataset->findAndGetOFString(DCM_PatientID, patient_id);
   dataset->findAndGetOFString(DCM_PatientName, patient_name);
@@ -267,7 +271,7 @@ void DicomDcmtk::init_codec() {
   DJLSEncoderRegistration::registerCodecs();
   DJLSDecoderRegistration::registerCodecs();
 
-  DJEncoderRegistration::registerCodecs();
+  DJEncoderRegistration::registerCodecs(ECC_lossyYCbCr, EUC_never);
   DJDecoderRegistration::registerCodecs();
 
   DcmRLEEncoderRegistration::registerCodecs();
