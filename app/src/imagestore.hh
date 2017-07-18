@@ -11,7 +11,7 @@ class ImageStore {
  
   std::string rootdir_;
 
-  void fill_study_map(const std::string& path, const Xfers& xfers);
+  void fill_study_map(const std::string& path, Xfers& xfers);
   
  public:
 
@@ -32,7 +32,7 @@ class ImageStore {
   typedef std::map<StudyUID, SeriesMap> HiStudyMap;
   HiStudyMap hi_study_map_;
   
-  explicit ImageStore(const std::string& path, const Xfers& xfers);
+  explicit ImageStore(const std::string& path, Xfers& xfers);
   void print() const;
 };
 

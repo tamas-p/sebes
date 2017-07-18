@@ -37,19 +37,26 @@
 
 //------------------------------------------------------------------------------
 
-// All supported transfer synaxes by the C-STORE SCU
-const char* _transfer_syntaxes[] = {UID_LittleEndianExplicitTransferSyntax,
-                                    UID_BigEndianExplicitTransferSyntax,
-                                    UID_LittleEndianImplicitTransferSyntax,
-                                    UID_JPEGLSLosslessTransferSyntax,
-                                    UID_JPEGProcess14SV1TransferSyntax,
-                                    UID_JPEGProcess1TransferSyntax,
-                                    UID_JPEGProcess2_4TransferSyntax,
-                                    UID_RLELosslessTransferSyntax,
-                                    UID_JPEG2000TransferSyntax,
-                                    UID_JPEG2000LosslessOnlyTransferSyntax};
+const int test = 12;
 
-const int _numTransferSyntaxes = DIM_OF(_transfer_syntaxes);;
+// All supported transfer synaxes by the C-STORE SCU
+const char* _transfer_syntaxes[] = {
+  // Uncompressed
+  UID_LittleEndianExplicitTransferSyntax,
+  UID_BigEndianExplicitTransferSyntax,
+  UID_LittleEndianImplicitTransferSyntax,
+  // Lossless compressed
+  UID_JPEGLSLosslessTransferSyntax,
+  UID_JPEGProcess14SV1TransferSyntax,
+  UID_RLELosslessTransferSyntax,
+  UID_JPEG2000LosslessOnlyTransferSyntax,
+  // Lossy comressed
+  UID_JPEG2000TransferSyntax,
+  UID_JPEGProcess1TransferSyntax,
+  UID_JPEGProcess2_4TransferSyntax,
+  UID_JPEGLSLossyTransferSyntax};
+
+const int length_txs = DIM_OF(_transfer_syntaxes);
 
 //------------------------------------------------------------------------------
 // Helper functions
@@ -125,6 +132,14 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
 
 void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xfers) {
 
+  Xfers xfers2;
+  if (xfers.empty()) {
+    LOG(INFO) << "Adding default list of Xfers.";
+    for (auto transfer_syntax : _transfer_syntaxes) {
+      xfers2.insert(transfer_syntax);
+    }
+  }
+  
   for (auto xfer : xfers) {
     DcmXfer xferobj(xfer.c_str());
 
@@ -422,7 +437,7 @@ OFCondition add_all_storage_presentation_contexts(T_ASC_Parameters *params) {
                                            pid,
                                            dcmLongSCUStorageSOPClassUIDs[i],
                                            _transfer_syntaxes,
-                                           _numTransferSyntaxes)).bad()) {
+                                           DIM_OF(_transfer_syntaxes))).bad()) {
       return cond;
     }
 

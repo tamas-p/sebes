@@ -20,9 +20,16 @@ void chk_cond(const char* file, int line, OFBool res);
 
 void show_viewer(DcmDataset* dataset);
 
+extern const char* _transfer_syntaxes[];
+extern const int length_txs;
+
+//------------------------------------------------------------------------------
+
 class DicomDcmtk : public Dicom {
   T_ASC_Network* network_;
   T_ASC_Association* assoc_;
+
+  static const int a = 1;
   
 public:
 

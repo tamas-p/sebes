@@ -174,24 +174,6 @@ int main(int argc, char *argv[]) {
   set_tcp_buffer_length(arguments.tcp_buffer_length_);
   LOG(INFO) << basename(argv[0]) << " has been started...";
 
-  if (arguments.xfers_.empty()) {
-    LOG(INFO) << "Adding default list of Xfers.";
-    // Uncomressed
-    arguments.xfers_.insert(UID_LittleEndianExplicitTransferSyntax);
-    arguments.xfers_.insert(UID_BigEndianExplicitTransferSyntax);
-    arguments.xfers_.insert(UID_LittleEndianImplicitTransferSyntax);
-    // Lossless compressed
-    arguments.xfers_.insert(UID_JPEGLSLosslessTransferSyntax);
-    arguments.xfers_.insert(UID_JPEGProcess14SV1TransferSyntax);
-    arguments.xfers_.insert(UID_RLELosslessTransferSyntax);
-    arguments.xfers_.insert(UID_JPEG2000TransferSyntax);
-    arguments.xfers_.insert(UID_JPEG2000LosslessOnlyTransferSyntax);
-    // Lossy compressed
-    arguments.xfers_.insert(UID_JPEGLSLossyTransferSyntax);
-    arguments.xfers_.insert(UID_JPEGProcess1TransferSyntax);
-    arguments.xfers_.insert(UID_JPEGProcess2_4TransferSyntax);
-  }
-
   const ImageStore* imagestore = new ImageStore(arguments.imagedir_, arguments.xfers_);
   imagestore->print();
 

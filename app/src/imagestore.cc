@@ -44,17 +44,24 @@ void list_dir(const char* path, std::vector<std::string>* found) {
 
 //------------------------------------------------------------------------------
 
-ImageStore::ImageStore(const std::string& path, const Xfers& xfers) : rootdir_(path) {
+ImageStore::ImageStore(const std::string& path, Xfers& xfers) : rootdir_(path) {
   fill_study_map(path, xfers);
 }
 
 //------------------------------------------------------------------------------
 
-void ImageStore::fill_study_map(const std::string& path, const Xfers& xfers) {
+void ImageStore::fill_study_map(const std::string& path, Xfers& xfers) {
   std::vector<std::string>* found = new std::vector<std::string>();
   list_dir(path.c_str(), found);
 
   DicomDcmtk::init_codec();
+
+  if (xfers.empty()) {
+    LOG(INFO) << "Adding default list of Xfers.";
+    for (int i = 0; i < length_txs; i++) {
+      xfers.insert(_transfer_syntaxes[i]);
+    }
+  }
 
   for (auto& it : *found) {
     Image* image = new Image();
