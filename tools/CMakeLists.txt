@@ -12,6 +12,7 @@ endif()
 # For tools ----------------------------------------------------
 
 set(INSTALL_DIR "${CMAKE_SOURCE_DIR}/install")
+set(BUILD_SHARED_LIBS OFF)
 
 # Building DCMTK -----------------------------------------------
 
@@ -34,10 +35,10 @@ message("GIT_EXECUTABLE='${GIT_EXECUTABLE}'")
 
 ExternalProject_Add(dcmtk
   PREFIX ${dcmtk_PREFIX}
-  URL http://dicom.offis.de/download/dcmtk/snapshot/old/dcmtk-3.6.1_20160630.tar.gz
+  URL http://dicom.offis.de/download/dcmtk/release/dcmtk-3.6.2.tar.gz
 #  GIT_REPOSITORY git://git.dcmtk.org/dcmtk
   INSTALL_DIR ${dcmtk_INSTALL_DIR}
-  PATCH_COMMAND patch -p1 -i ${CMAKE_SOURCE_DIR}/setsockopt.patch 
+#  PATCH_COMMAND patch -p1 -i ${CMAKE_SOURCE_DIR}/setsockopt.patch 
   CMAKE_ARGS ${dcmtk_CMAKE_ARGS}
 )
 
@@ -46,10 +47,12 @@ message("INSTALL_DIR='${INSTALL_DIR}'")
 # Building OpenJPEG --------------------------------------------
 
 ExternalProject_Add(ojpg
-  #INSTALL_DIR /tmp
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DBUILD_SHARED_LIBS=OFF
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
+  # can not be switched off as it is explicitely in their CMakeLists.txt -DBUILD_SHARED_LIBS:BOOL=OFF
+  -DBUILD_SHARED_LIBS:BOOL=OFF
   PREFIX "openjpeg"
-  GIT_REPOSITORY https://github.com/uclouvain/openjpeg.git
+  #  GIT_REPOSITORY https://github.com/uclouvain/openjpeg.git
+  URL https://github.com/uclouvain/openjpeg/archive/v2.1.2.tar.gz
 )
 
 ExternalProject_Get_Property(${openjpeg} install_dir)
@@ -58,17 +61,15 @@ ExternalProject_Get_Property(${openjpeg} install_dir)
 
 ExternalProject_Add(fmjpeg2koj DEPENDS dcmtk ojpg
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
-  -DBUILD_SHARED_LIBS=OFF
   -DOPENJPEG=${INSTALL_DIR}
   -DDCMTK_DIR=${INSTALL_DIR}
-  -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_CXX_STANDARD=11
-
+  -DBUILD_SHARED_LIBS:BOOL=OFF
   PREFIX "fmjpeg2koj"
   GIT_REPOSITORY https://github.com/DraconPern/fmjpeg2koj.git
 )
 
-ExternalProject_Get_Property(${openjpeg} install_dir)
+ExternalProject_Get_Property(${fmjpeg2koj} install_dir)
 
 
 # Building Easylogging++ ---------------------------------------

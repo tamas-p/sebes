@@ -86,7 +86,7 @@ void ImageStore::fill_study_map(const std::string& path, Xfers& xfers) {
 
     LOG(INFO) << "Added " << image->source_
               << " - Xfer: " << image->transfer_syntax_uid_
-              << " - Dset: " << image->dataset_
+      // << " - Dset: " << image->datasets_
               << " - [" << image->study_uid_
               << "][" << image->series_uid_
               << "][" << image->sop_instance_uid_ << "]";
@@ -104,7 +104,7 @@ void ImageStore::print() const {
       Image* image = it_im.second;
       std::cout  << ">Image " << image->source_
                  << " - Xfer: " << image->transfer_syntax_uid_
-                 << " - Dset: " << image->dataset_
+        //                 << " - Dset: " << image->dataset_
                  << " - [" << image->study_uid_
                  << "][" << image->series_uid_
                  << "][" << image->sop_instance_uid_ << "]" << std::endl;
@@ -119,7 +119,7 @@ void ImageStore::print() const {
       Image* image = it_im.second;
       std::cout  << ">Image " << image->source_
               << " - Xfer: " << image->transfer_syntax_uid_
-              << " - Dset: " << image->dataset_
+        //          << " - Dset: " << image->dataset_
               << " - [" << image->study_uid_
               << "][" << image->series_uid_
                  << "][" << image->sop_instance_uid_ << "]" << std::endl;
@@ -139,7 +139,7 @@ void ImageStore::print() const {
       Image* image = it_im.second;
       std::cout  << ">Image " << image->source_
               << " - Xfer: " << image->transfer_syntax_uid_
-              << " - Dset: " << image->dataset_
+        //              << " - Dset: " << image->dataset_
               << " - [" << image->study_uid_
               << "][" << image->series_uid_
                  << "][" << image->sop_instance_uid_ << "]" << std::endl;

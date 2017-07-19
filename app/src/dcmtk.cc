@@ -16,6 +16,8 @@
 #include "dcmtk/dcmjpls/djdecode.h"   /* for class DJLSDecoderRegistration */
 #include "dcmtk/dcmjpls/djrparam.h"   /* for class DJLSRepresentationParameter */
 
+#include "dcmtk/dcmjpeg/djrplol.h"
+#include "dcmtk/dcmjpeg/djrploss.h"
 #include "dcmtk/dcmjpeg/djencode.h"   /* for dcmjpeg encoders */
 #include "dcmtk/dcmjpeg/djdecode.h"   /* for dcmjpeg decoders */
 
@@ -130,8 +132,7 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
 
 //------------------------------------------------------------------------------
 
-void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xfers) {
-
+void convert_to_supported_transfer_syntaxes(DcmDataset* original, DatasetMap* dataset_map, const Xfers& xfers) {
   Xfers xfers2;
   if (xfers.empty()) {
     LOG(INFO) << "Adding default list of Xfers.";
@@ -139,13 +140,17 @@ void convert_to_supported_transfer_syntaxes(DcmDataset* dataset, const Xfers& xf
       xfers2.insert(transfer_syntax);
     }
   }
-  
+
   for (auto xfer : xfers) {
     DcmXfer xferobj(xfer.c_str());
 
     std::string result_str;
     std::string reason = "";
-    OFCondition res = dataset->chooseRepresentation(xferobj.getXfer(), 0);
+
+    DcmDataset* dataset_copy = new DcmDataset(*original);
+    OFCondition res = dataset_copy->chooseRepresentation(xferobj.getXfer(), 0);
+    (*dataset_map)[xfer] = dataset_copy;
+
     if (res.good()) {
       result_str = "conversion OK";
     } else {
@@ -252,7 +257,7 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
   dataset->findAndGetOFString(DCM_SeriesDescription, series_desc);
   dataset->findAndGetOFString(DCM_SOPClassUID, sop_class_uid);
 
-  convert_to_supported_transfer_syntaxes(dataset, xfers);
+  convert_to_supported_transfer_syntaxes(dataset, &image->datasets_, xfers);
 
   E_TransferSyntax xferid = dataset->getOriginalXfer();
   DcmXfer xferobj(xferid);
@@ -260,7 +265,8 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
           << xferobj.getXferName()
           << " (" <<  xferobj.getXferID() << ")";
 
-  image->dataset_ = dataset;
+  // image->dataset_ = dataset;
+
   image->init(path,
               transfer_syntax_uid.c_str(),
 
@@ -274,6 +280,11 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
 
               sop_instance_uid.c_str(),
               sop_class_uid.c_str());
+
+  LOG(INFO) << "Supported xfers:";
+  for (auto& kv : image->datasets_) {
+    LOG(INFO) << kv.first;
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -283,16 +294,24 @@ void DicomDcmtk::init() {
 }
 
 void DicomDcmtk::init_codec() {
+  DJLSEncoderRegistration::cleanup();
   DJLSEncoderRegistration::registerCodecs();
+  DJLSDecoderRegistration::cleanup();
   DJLSDecoderRegistration::registerCodecs();
 
+  DJEncoderRegistration::cleanup();
   DJEncoderRegistration::registerCodecs(ECC_lossyYCbCr, EUC_never);
+  DJDecoderRegistration::cleanup();
   DJDecoderRegistration::registerCodecs();
 
+  DcmRLEEncoderRegistration::cleanup();
   DcmRLEEncoderRegistration::registerCodecs();
+  DcmRLEDecoderRegistration::cleanup();
   DcmRLEDecoderRegistration::registerCodecs();
 
+  FMJPEG2KEncoderRegistration::cleanup();
   FMJPEG2KEncoderRegistration::registerCodecs();
+  FMJPEG2KDecoderRegistration::cleanup();
   FMJPEG2KDecoderRegistration::registerCodecs();
 }
 
@@ -478,20 +497,30 @@ void storescu_store_single(T_ASC_Association* assoc,
                            const std::string& originator_aet,
                            DIC_US originator_id) try {
   if (VLOG_IS_ON(1)) TIMED_FUNC(timerObj);
-  DcmDataset* dataset = static_cast<DcmDataset*>(image->dataset_);
+  // DcmDataset* dataset = static_cast<DcmDataset*>(image->dataset_);
 
-  DIC_UI sopClass;
-  DIC_UI sopInstance;
-  CHK(DU_findSOPClassAndInstanceInDataSet(dataset, sopClass, sopInstance, false));
+  // DIC_UI sopClass;
+  // DIC_UI sopInstance;
+  // CHK(DU_findSOPClassAndInstanceInDataSet(dataset, sopClass, sopInstance, false));
+  LOG(INFO) << "sopClass: " << image->sop_class_uid_;
+  LOG(INFO) << "sopInstance: " << image->sop_instance_uid_;
 
   // Which presentation context should be used.
-  T_ASC_PresentationContextID presId = ASC_findAcceptedPresentationContextID(assoc, sopClass);
+  T_ASC_PresentationContextID presId = ASC_findAcceptedPresentationContextID(assoc, image->sop_class_uid_.c_str());
+
+  LOG(INFO) << "Accepted presentation context id is:" << (unsigned int)presId;
+  LOG(INFO) << "-----------------------------------------------";
+  T_ASC_PresentationContext pc;
+  ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
+  ASC_dumpPresentationContext(&pc, std::cout);
+  LOG(INFO) << "Accepted Transfer Syntax: " << pc.acceptedTransferSyntax;
+  std::string xfer = pc.acceptedTransferSyntax;
 
   // Create subrequest
   T_DIMSE_C_StoreRQ request;
   request.MessageID = assoc->nextMsgID++;
-  strncpy(request.AffectedSOPClassUID, sopClass, DIC_UI_LEN);
-  strncpy(request.AffectedSOPInstanceUID, sopInstance, DIC_UI_LEN);
+  strncpy(request.AffectedSOPClassUID, image->sop_class_uid_.c_str(), DIC_UI_LEN);
+  strncpy(request.AffectedSOPInstanceUID, image->sop_instance_uid_.c_str(), DIC_UI_LEN);
   request.DataSetType = DIMSE_DATASET_PRESENT;
   request.Priority = DIMSE_PRIORITY_HIGH;
 
@@ -530,7 +559,7 @@ void storescu_store_single(T_ASC_Association* assoc,
                                        presId,
                                        &req,
                                        0,
-                                       dataset,
+                                       static_cast<DcmDataset*>(image->datasets_.at(pc.acceptedTransferSyntax)),
                                        0,
                                        0,
                                        0));
@@ -729,7 +758,7 @@ void DicomDcmtk::process_request() {
 }
 
 DcmElement* create_element(const std::string& str, const DcmTagKey& tag_key) {
-  DcmElement* element = newDicomElement(tag_key);
+  DcmElement* element = DcmItem::newDicomElement(tag_key);
   element->putString(str.c_str());
   return element;
 }
@@ -1048,7 +1077,8 @@ void storescp_accept_association(T_ASC_Network* network,
   int ts_size = DIM_OF(ts);
   CHK(ASC_acceptContextsWithPreferredTransferSyntaxes((*assoc)->params,
                                                       dcmAllStorageSOPClassUIDs,
-                                                      numberOfAllDcmStorageSOPClassUIDs,
+                                                   // numberOfAllDcmStorageSOPClassUIDs
+                                                      numberOfDcmAllStorageSOPClassUIDs,
                                                       ts,
                                                       ts_size));
 
@@ -1136,6 +1166,10 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
       // if (VLOG_IS_ON(1)) PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after sendStoreResponse");
     }
 
+    DcmFileFormat file_format(dset);
+    CHK(file_format.saveFile(imageFileName, dset->getCurrentXfer()));
+    LOG(INFO) << "SAVED: " << imageFileName;
+
     VLOG(1) << "after storeProvider " << imageFileName;
     VLOG(1) << "cond= " << cond.text();
 
@@ -1151,7 +1185,7 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
     CHK(dset->findAndGetOFString(DCM_InstanceNumber, instance_number));
     VLOG(1) << "InstanceNumber=" << instance_number;
 
-    if (instance_number.compare("863") == 0) {
+    if (instance_number.compare("0") == 0) {
       // show_viewer(dset);
     }
   }
@@ -1238,7 +1272,8 @@ T_ASC_Association* receive_association(CallbackData_SCU* cbd) {
 
   CHK(ASC_acceptContextsWithPreferredTransferSyntaxes(assoc->params,
                                                       dcmAllStorageSOPClassUIDs,
-                                                      numberOfAllDcmStorageSOPClassUIDs,
+                                                      // numberOfAllDcmStorageSOPClassUIDs,
+                                                      numberOfDcmAllStorageSOPClassUIDs,
                                                       transfer_syntaxes,
                                                       ts_size));
 
@@ -1374,7 +1409,18 @@ void serve_storescu(T_ASC_Association* assoc, CallbackData_SCU* cbd) {
 
         VLOG(1) << "Received dset length: " << dset->getLength(dset->getOriginalXfer());
         num_bytes_received += dset->getLength(dset->getOriginalXfer());
-        log_received_image(dset);
+        log_received_image(req);
+
+        char imageFileName[PATH_MAX+1];
+        snprintf(imageFileName,
+                 PATH_MAX,
+                 "%s.%s",
+                 dcmSOPClassUIDToModality(req->AffectedSOPClassUID),
+                 req->AffectedSOPInstanceUID);
+
+        DcmFileFormat file_format(dset);
+        CHK(file_format.saveFile(imageFileName));
+        LOG(INFO) << "SAVED: " << imageFileName;
       }
 
       if (cbd->need_response_)
@@ -1488,7 +1534,7 @@ void DicomDcmtk::movescu_execute(const std::string& raet,
   PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after ASC_findAcceptedPresentationContextID");
 
   //-------------------------------------
-  DcmElement* qrlevel_element = newDicomElement(DCM_QueryRetrieveLevel);
+  DcmElement* qrlevel_element = DcmItem::newDicomElement(DCM_QueryRetrieveLevel);
   switch (level) {
   case Dicom::SERIES:
     qrlevel_element->putString("SERIES"); break;

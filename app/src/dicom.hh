@@ -36,6 +36,9 @@ typedef std::string TransferSyntaxUID;
 typedef std::map<std::string, std::string> AetMap;
 typedef std::set<std::string> Xfers;
 
+typedef std::map<TransferSyntaxUID, void*> DatasetMap;
+
+
 class DcmDataset;
 
 //------------------------------------------------------------------------------
@@ -90,8 +93,9 @@ struct Image {
   SOPInstanceUID sop_instance_uid_;
   SOPClassUID sop_class_uid_;
 
-  void* dataset_;
-
+  // void* dataset_;
+  DatasetMap datasets_;
+  
   void init(std::string source,
             TransferSyntaxUID transfer_syntax_uid,
 

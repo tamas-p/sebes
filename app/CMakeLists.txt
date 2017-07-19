@@ -46,7 +46,10 @@ link_directories(${tools_PREFIX}/lib)
 #link_directories(build)
 
 add_executable(sebes "src/sebes.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(sebes dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd crypto fmjpeg2k openjp2 icuuc pthread wrap z nsl dl)
+target_link_libraries(sebes dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd crypto fmjpeg2k openjp2 icuuc icudata pthread wrap z nsl dl)
 
 add_executable(huz "src/huz.cc" "src/imagestore.cc" "src/dcmtk.cc" "src/util.cc")
-target_link_libraries(huz dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd crypto icui18n icuuc fmjpeg2k openjp2 pthread wrap z nsl dl)
+target_link_libraries(huz dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd crypto icui18n icuuc icudata fmjpeg2k openjp2 pthread wrap z nsl dl)
+
+add_executable(jpgtest "src/jpgtest.cc")
+target_link_libraries(jpgtest dcmqrdb dcmjpls charls dcmjpeg ijg8 ijg12 ijg16 dcmimage dcmimgle dcmnet dcmdata oflog ofstd crypto icui18n icuuc icudata fmjpeg2k openjp2 pthread wrap z nsl dl)
