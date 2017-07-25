@@ -526,19 +526,19 @@ void storescu_store_single(T_ASC_Association* assoc,
                            const std::string& originator_aet,
                            DIC_US originator_id) try {
   if (VLOG_IS_ON(1)) TIMED_FUNC(timerObj);
-  LOG(INFO) << "-----------------------------------------------";
+  VLOG(1) << "-----------------------------------------------";
   // DcmDataset* dataset = static_cast<DcmDataset*>(image->dataset_);
 
   // DIC_UI sopClass;
   // DIC_UI sopInstance;
   // CHK(DU_findSOPClassAndInstanceInDataSet(dataset, sopClass, sopInstance, false));
-  LOG(INFO) << "sopClass: " << image->sop_class_uid_;
-  LOG(INFO) << "sopInstance: " << image->sop_instance_uid_;
+  VLOG(1) << "sopClass: " << image->sop_class_uid_;
+  VLOG(1) << "sopInstance: " << image->sop_instance_uid_;
 
   // Which presentation context should be used.
   T_ASC_PresentationContextID presId = ASC_findAcceptedPresentationContextID(assoc, image->sop_class_uid_.c_str());
 
-  LOG(INFO) << "Accepted presentation context id is:" << (unsigned int)presId;
+  VLOG(1) << "Accepted presentation context id is:" << (unsigned int)presId;
   if (presId == 0) {
     LOG(ERROR) << "No presentation context was selected.";
     return;
@@ -546,8 +546,8 @@ void storescu_store_single(T_ASC_Association* assoc,
 
   T_ASC_PresentationContext pc;
   ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
-  ASC_dumpPresentationContext(&pc, std::cout);
-  LOG(INFO) << "Accepted Transfer Syntax: " << pc.acceptedTransferSyntax;
+  if (VLOG_IS_ON(1)) ASC_dumpPresentationContext(&pc, std::cout);
+  VLOG(1) << "Accepted Transfer Syntax: " << pc.acceptedTransferSyntax;
 
   // Create subrequest
   T_DIMSE_C_StoreRQ request;
@@ -1200,9 +1200,11 @@ bool storescp_exec_single(T_ASC_Network*, T_ASC_Association** assoc, bool need_r
       // if (VLOG_IS_ON(1)) PERFORMANCE_CHECKPOINT_WITH_ID(timerObj, "after sendStoreResponse");
     }
 
-    DcmFileFormat file_format(dset);
-    CHK(file_format.saveFile(imageFileName, dset->getCurrentXfer()));
-    LOG(INFO) << "SAVED: " << imageFileName;
+    if (VLOG_IS_ON(99)) {
+      DcmFileFormat file_format(dset);
+      CHK(file_format.saveFile(imageFileName, dset->getCurrentXfer()));
+      LOG(INFO) << "SAVED: " << imageFileName;
+    }
 
     VLOG(1) << "after storeProvider " << imageFileName;
     VLOG(1) << "cond= " << cond.text();
@@ -1452,9 +1454,11 @@ void serve_storescu(T_ASC_Association* assoc, CallbackData_SCU* cbd) {
                  dcmSOPClassUIDToModality(req->AffectedSOPClassUID),
                  req->AffectedSOPInstanceUID);
 
-        DcmFileFormat file_format(dset);
-        CHK(file_format.saveFile(imageFileName));
-        LOG(INFO) << "SAVED: " << imageFileName;
+        if (VLOG_IS_ON(99)) {
+          DcmFileFormat file_format(dset);
+          CHK(file_format.saveFile(imageFileName));
+          LOG(INFO) << "SAVED: " << imageFileName;
+        }
       }
 
       if (cbd->need_response_)
