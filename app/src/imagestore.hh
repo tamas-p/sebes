@@ -15,6 +15,9 @@ class ImageStore {
   
  public:
 
+  // Transfer syntaxes supported by the imagestore
+  Xfers xfers_;
+
   // All images map
   typedef std::map<SOPInstanceUID, Image*> ImageMap;
   ImageMap image_map_;

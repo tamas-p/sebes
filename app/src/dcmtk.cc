@@ -132,16 +132,11 @@ DicomDcmtk::DicomDcmtk(const std::string& aet,
 
 //------------------------------------------------------------------------------
 
-void convert_to_supported_transfer_syntaxes(DcmDataset* original, DatasetMap* dataset_map, const Xfers& xfers) {
-  Xfers xfers2;
-  if (xfers.empty()) {
-    LOG(INFO) << "Adding default list of Xfers.";
-    for (auto transfer_syntax : _transfer_syntaxes) {
-      xfers2.insert(transfer_syntax);
-    }
-  }
-
-  for (auto xfer : xfers) {
+void convert_to_supported_transfer_syntaxes(DcmDataset* original,
+                                            DatasetMap* dataset_map,
+                                            const Xfers& in_xfers,
+                                            Xfers* out_xfers) {
+  for (auto xfer : in_xfers) {
     DcmXfer xferobj(xfer.c_str());
 
     std::string result_str;
@@ -149,10 +144,11 @@ void convert_to_supported_transfer_syntaxes(DcmDataset* original, DatasetMap* da
 
     DcmDataset* dataset_copy = new DcmDataset(*original);
     OFCondition res = dataset_copy->chooseRepresentation(xferobj.getXfer(), 0);
-    (*dataset_map)[xfer] = dataset_copy;
 
     if (res.good()) {
       result_str = "conversion OK";
+      (*dataset_map)[xfer] = dataset_copy;
+      out_xfers->insert(xfer);
     } else {
       result_str = "conversion ERROR: ";
       reason = res.text();
@@ -214,7 +210,7 @@ void log_dataset_checksum(DcmDataset* dataset) {
 
 //------------------------------------------------------------------------------
 
-void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xfers& xfers) {
+void DicomDcmtk::load_image_file(const std::string& path, Image* image, Xfers& xfers, Xfers* out_xfers) {
   DcmFileFormat* fileformat = new DcmFileFormat();
   CHK(fileformat->loadFile(path.c_str()));
   CHK(fileformat->loadAllDataIntoMemory());
@@ -257,7 +253,7 @@ void DicomDcmtk::load_image_file(const std::string& path, Image* image, const Xf
   dataset->findAndGetOFString(DCM_SeriesDescription, series_desc);
   dataset->findAndGetOFString(DCM_SOPClassUID, sop_class_uid);
 
-  convert_to_supported_transfer_syntaxes(dataset, &image->datasets_, xfers);
+  convert_to_supported_transfer_syntaxes(dataset, &image->datasets_, xfers, out_xfers);
 
   E_TransferSyntax xferid = dataset->getOriginalXfer();
   DcmXfer xferobj(xferid);
@@ -466,6 +462,37 @@ OFCondition add_all_storage_presentation_contexts(T_ASC_Parameters *params) {
   return cond;
 }
 
+// At our end (C-STORE SCU) we add all supported
+// contexts and let the SCP to select one.
+OFCondition add_storage_presentation_contexts(T_ASC_Parameters *params, const Xfers& xfers) {
+  const char* transferSyntaxList[xfers.size()];
+  int transferSyntaxListCount = xfers.size();
+  int counter = 0;
+  for  (Xfers::const_iterator iter = xfers.begin(); iter != xfers.end(); ++iter) {
+    transferSyntaxList[counter] = iter->c_str();
+    counter++;
+  }
+
+  OFCondition cond = EC_Normal;
+  int pid = 1;
+  for (int i = 0;
+       transferSyntaxListCount > 0 && i < numberOfDcmLongSCUStorageSOPClassUIDs && cond.good();
+       i++) {
+    if ((cond = ASC_addPresentationContext(params,
+                                           pid,
+                                           dcmLongSCUStorageSOPClassUIDs[i],
+                                           transferSyntaxList,
+                                           transferSyntaxListCount)).bad()) {
+      return cond;
+    }
+
+    pid += 2;  // Only odd presentation context id's
+  }
+
+  return cond;
+}
+
+
 //------------------------------------------------------------------------------
 
 void request_association_to_storescp(const std::string& my_aet,
@@ -473,14 +500,16 @@ void request_association_to_storescp(const std::string& my_aet,
                                      const std::string& remote_aet,
                                      const std::string& remote_address,
                                      T_ASC_Network* network,
-                                     T_ASC_Association** assoc) {
+                                     T_ASC_Association** assoc,
+                                     const Xfers& xfers) {
   T_ASC_Parameters* params;
   CHK(ASC_createAssociationParameters(&params, ASC_DEFAULTMAXPDU));
 
   CHK(ASC_setPresentationAddresses(params, my_address.c_str(), remote_address.c_str()));
   CHK(ASC_setAPTitles(params, my_aet.c_str(), remote_aet.c_str(), NULL));
 
-  CHK(add_all_storage_presentation_contexts(params));
+  CHK(add_storage_presentation_contexts(params, xfers));
+  // CHK(add_all_storage_presentation_contexts(params));
 
   LOG(INFO) << "request_association_to_storescp";
   CHK(ASC_requestAssociation(network, params, assoc));
@@ -497,6 +526,7 @@ void storescu_store_single(T_ASC_Association* assoc,
                            const std::string& originator_aet,
                            DIC_US originator_id) try {
   if (VLOG_IS_ON(1)) TIMED_FUNC(timerObj);
+  LOG(INFO) << "-----------------------------------------------";
   // DcmDataset* dataset = static_cast<DcmDataset*>(image->dataset_);
 
   // DIC_UI sopClass;
@@ -509,12 +539,15 @@ void storescu_store_single(T_ASC_Association* assoc,
   T_ASC_PresentationContextID presId = ASC_findAcceptedPresentationContextID(assoc, image->sop_class_uid_.c_str());
 
   LOG(INFO) << "Accepted presentation context id is:" << (unsigned int)presId;
-  LOG(INFO) << "-----------------------------------------------";
+  if (presId == 0) {
+    LOG(ERROR) << "No presentation context was selected.";
+    return;
+  }
+
   T_ASC_PresentationContext pc;
   ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
   ASC_dumpPresentationContext(&pc, std::cout);
   LOG(INFO) << "Accepted Transfer Syntax: " << pc.acceptedTransferSyntax;
-  std::string xfer = pc.acceptedTransferSyntax;
 
   // Create subrequest
   T_DIMSE_C_StoreRQ request;
@@ -613,7 +646,8 @@ static void move_provider_callback(/* in */
                                     callback_data->raet_,
                                     callback_data->rhost_,
                                     callback_data->network_,
-                                    &callback_data->store_assoc_);
+                                    &callback_data->store_assoc_,
+                                    callback_data->imagestore_->xfers_);
 
     std::cout << "Request:" << std::endl;
     std::cout << "----------------------------------------------------------" << std::endl;

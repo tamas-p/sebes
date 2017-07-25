@@ -44,7 +44,8 @@ void list_dir(const char* path, std::vector<std::string>* found) {
 
 //------------------------------------------------------------------------------
 
-ImageStore::ImageStore(const std::string& path, Xfers& xfers) : rootdir_(path) {
+ImageStore::ImageStore(const std::string& path, Xfers& xfers)
+  : rootdir_(path) {
   fill_study_map(path, xfers);
 }
 
@@ -67,7 +68,7 @@ void ImageStore::fill_study_map(const std::string& path, Xfers& xfers) {
     Image* image = new Image();
 
     try {
-      DicomDcmtk::load_image_file(it, image, xfers);  // FIXME, no dcmtk here
+      DicomDcmtk::load_image_file(it, image, xfers, &xfers_);  // FIXME, no dcmtk here
     } catch (const dicom_exception& ex) {
       continue;
     }
